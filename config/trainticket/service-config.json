@@ -1,0 +1,117 @@
+{
+  "travel-plan-service": {
+    "max-thread": 20,
+    "max-replicas": 19,
+    "aimd-threshold": 1000
+  },
+  "food-service": {
+    "max-thread": 20,
+    "max-replicas": 5,
+    "aimd-threshold": 1.5
+  },
+  "food-map-service": {
+    "max-thread": 20,
+    "max-replicas": 5,
+    "aimd-threshold": 2
+  },
+  "config-service": {
+    "max-thread": 20,
+    "max-replicas": 6,
+    "aimd-threshold": 1.5
+  },
+  "assurance-service": {
+    "max-thread": 20,
+    "max-replicas": 3,
+    "aimd-threshold": 2
+  },
+  "auth-service": {
+    "max-thread": 20,
+    "max-replicas": 3,
+    "aimd-threshold": 2
+  },
+  "basic-service": {
+    "max-thread": 20,
+    "max-replicas": 12,
+    "aimd-threshold": 1.25
+  },
+  "order-other-service": {
+    "max-thread": 20,
+    "max-replicas": 3,
+    "aimd-threshold": 1.5
+  },
+  "order-service": {
+    "max-thread": 20,
+    "max-replicas": 5,
+    "aimd-threshold": 1.5
+  },
+  "preserve-service": {
+    "max-thread": 20,
+    "max-replicas": 3,
+    "aimd-threshold": 1.5
+  },
+  "preserve-other-service": {
+    "max-thread": 20,
+    "max-replicas": 3,
+    "aimd-threshold": 1.5
+  },
+  "price-service": {
+    "max-thread": 20,
+    "max-replicas": 4,
+    "aimd-threshold": 1.5
+  },
+  "route-plan-service": {
+    "max-thread": 20,
+    "max-replicas": 15,
+    "aimd-threshold": 1.25
+  },
+  "route-service": {
+    "max-thread": 20,
+    "max-replicas": 14,
+    "aimd-threshold": 4
+  },
+  "seat-service": {
+    "max-thread": 20,
+    "max-replicas": 8,
+    "aimd-threshold": 2
+  },
+  "station-service": {
+    "max-thread": 20,
+    "max-replicas": 18,
+    "aimd-threshold": 3
+  },
+  "ticketinfo-service": {
+    "max-thread": 20,
+    "max-replicas": 13,
+    "aimd-threshold": 1.5
+  },
+  "train-service": {
+    "max-thread": 20,
+    "max-replicas": 7,
+    "aimd-threshold": 1.5
+  },
+  "travel2-b-service": {
+    "max-thread": 20,
+    "max-replicas": 3,
+    "aimd-threshold": 3
+  },
+  "travel2-service": {
+    "max-thread": 20,
+    "max-replicas": 5,
+    "aimd-threshold": 1.5
+  },
+  "travel-b-service": {
+    "max-thread": 20,
+    "max-replicas": 8,
+    "aimd-threshold": 2.5
+  },
+  "travel-service": {
+    "max-thread": 20,
+    "max-replicas": 18,
+    "aimd-threshold": 2.5
+  },
+  "verify-code-service": {
+    "max-thread": 20,
+    "max-replicas": 3,
+    "aimd-threshold": 1.5
+  }
+}

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+option go_package = "scut.edu.cn/microkube/proto";
+
+package elastic_deployment;
+
+message Response {
+  uint32 err_code = 1;
+  string err_msg = 2;
+}
+
+message EmptyRequest {
+}
+
+message Deployment {
+  string name = 1;
+  string namespace = 2;
+}
+
+message DeploymentReplicasOpsRequest {
+  Deployment target = 1;
+  int32 target_replicas = 2;
+}
+
+message DeploymentOpsResponse {
+  Response base = 1;
+}
+
+message DeploymentGetReplicasResponse {
+  Response base = 1;
+  int32 replicas = 2;
+}
+
+message NameListResponse {
+  // namespace/name
+  repeated string names = 1;
+}
+
+service DeploymentOperations {
+  rpc SetPodReplicas(DeploymentReplicasOpsRequest) returns (DeploymentOpsResponse) {}
+  rpc SetRunningPodReplicas(DeploymentReplicasOpsRequest) returns (DeploymentOpsResponse) {}
+
+  rpc GetPodReplicas(Deployment) returns (DeploymentGetReplicasResponse) {}
+  rpc GetInitializingPodReplicas(Deployment) returns (DeploymentGetReplicasResponse) {}
+  rpc GetRunnablePodReplicas(Deployment) returns (DeploymentGetReplicasResponse) {}
+  rpc GetRunningPodReplicas(Deployment) returns (DeploymentGetReplicasResponse) {}
+
+  rpc GetNames(EmptyRequest) returns (NameListResponse) {}
+}
+
+
+

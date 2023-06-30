@@ -1,0 +1,12 @@
+{
+  "root-endpoints": [
+    {
+      "service-name": "food-service",
+      "endpoint-name": "/api/v1/foodservice/foods/*/*/*/*"
+    },
+    {
+      "service-name": "travel-plan-service",
+      "endpoint-name": "/api/v1/travelplanservice/travelPlan/cheapest"
+    }
+  ]
+}

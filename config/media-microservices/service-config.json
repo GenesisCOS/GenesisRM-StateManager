@@ -1,0 +1,74 @@
+{
+  "CastInfoService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1000,
+    "k8s-name": "cast-info-service"
+  },
+  "ComposeReviewService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.5,
+    "k8s-name": "compose-review-service"
+  },
+  "MovieIdService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 2,
+    "k8s-name": "movie-id-service"
+  },
+  "MovieInfoService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.5,
+    "k8s-name": "movie-info-service"
+  },
+  "MovieReviewService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 2,
+    "k8s-name": "movie-review-service"
+  },
+  "PlotService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 2,
+    "k8s-name": "plot-service"
+  },
+  "RatingService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.25,
+    "k8s-name": "rating-service"
+  },
+  "ReviewStorageService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.5,
+    "k8s-name": "review-storage-service"
+  },
+  "TextService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.5,
+    "k8s-name": "text-service"
+  },
+  "UniqueIdService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.5,
+    "k8s-name": "unique-id-service"
+  },
+  "UserReviewService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.5,
+    "k8s-name": "user-review-service"
+  },
+  "UserService": {
+    "max-thread": 20,
+    "max-replicas": 20,
+    "aimd-threshold": 1.5,
+    "k8s-name": "user-service"
+  }
+}
