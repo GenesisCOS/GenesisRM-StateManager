@@ -1,9 +1,10 @@
 import math
 import time
 import threading
+import random 
 from typing import List, Dict, Any
 
-import grpc
+# import grpc
 import numpy as np
 
 from .sttf.estimator import Estimator as SttfEstimator
@@ -13,23 +14,29 @@ from .data import ServiceEndpointPair
 from util.postgresql import PostgresqlDriver
 from servicegraph import ServiceGraph
 
+from kubernetes import client
+configuration = client.Configuration()
+configuration.verify_ssl = False 
+configuration.cert_file = '/etc/kubernetes/ssl/cert/admin.pem'
+configuration.key_file = '/etc/kubernetes/ssl/key/admin-key.pem'
+configuration.host = 'https://192.168.137.138:6443'
+client.Configuration.set_default(configuration)
+
+import urllib3 
+urllib3.disable_warnings()
+
 WINDOW_SIZE_S = 5
 DEFAULT_MAX_THREAD = 20
 DEFAULT_MAX_REPLICAS = 10
-cache = dict()
 
 L1_OFFSET = 5
 
 
 class Scaler(object):
-    def __init__(self, args, service_configs: Dict):
+    def __init__(self, args, logger, service_configs: Dict):
         self.args = args
-
-        self.response_time_table = args.response_time_table
-        self.task_stats_table2 = args.task_stats_table2
-        self.task_stats_table = args.task_stats_table
-        self.request_num_table2 = args.request_num_table2
-        self.request_num_table = args.request_num_table
+        
+        self.logger = logger 
 
         self.service_configs = service_configs
 
@@ -42,6 +49,21 @@ class Scaler(object):
         )
         self.sg = ServiceGraph(neo4j_url=args.neo4j_url)
         self.neo4j_project_name = args.neo4j_project_name
+        
+    def get_cpu_limit_dec_step(self, service_name: str) -> int:
+        if service_name not in self.service_configs:
+            raise Exception(f'service: {service_name} not find in config file.')
+        return self.service_configs.get(service_name).get('cpu-limit-dec-step')
+        
+    def get_cpu_limit_max(self, service_name: str) -> int:
+        if service_name not in self.service_configs:
+            raise Exception(f'service: {service_name} not find in config file.')
+        return self.service_configs.get(service_name).get('cpu-limit-max')
+    
+    def get_cpu_limit_min(self, service_name: str) -> int:
+        if service_name not in self.service_configs:
+            raise Exception(f'service: {service_name} not find in config file.')
+        return self.service_configs.get(service_name).get('cpu-limit-min')
 
     def get_service_max_thread(self, service_name: str) -> int:
         if service_name not in self.service_configs:
@@ -61,6 +83,42 @@ class Scaler(object):
     def get_k8s_name(self, service_name: str) -> str:
         return self.service_configs.get(service_name).get('k8s-name')
 
+    def get_k8s_deployment_replicas(self, api, k8s_name: str):
+        while True:
+            try:
+                deployment = api.read_namespaced_deployment(
+                    name=k8s_name, namespace=self.args.k8s_namespace)
+                cur_replicas = deployment.spec.replicas
+                break 
+            except Exception as e:
+                self.logger.error(e)
+            time.sleep(random.random() * 5)
+        return cur_replicas, deployment 
+
+    def set_k8s_deployment_replicas(self, api, k8s_name: str, replicas: int, deployment = None):
+        if deployment is None:
+            while True:
+                try:
+                    deployment = api.read_namespaced_deployment(
+                        name=k8s_name, namespace=self.args.k8s_namespace)
+                    break 
+                except Exception as e:
+                    self.logger.error(e)
+                time.sleep(random.random() * 5)
+        while True:
+            try:
+                deployment.spec.replicas = replicas
+                _ = api.patch_namespaced_deployment(
+                    name=k8s_name, namespace=self.args.k8s_namespace,
+                    body=deployment
+                )
+                break
+            except:
+                self.logger.error(f'update {k8s_name} deployment exception')
+                deployment = api.read_namespaced_deployment(
+                    name=k8s_name, namespace=self.args.k8s_namespace)
+            time.sleep(random.random() * 5)
+            
     def get_running_replicas(self, service_name: str):
         with grpc.insecure_channel(self.args.ed_host) as channel:
             stub = ed_grpc.DeploymentOperationsStub(channel)
@@ -70,27 +128,10 @@ class Scaler(object):
             ))
         return resp.replicas
 
-    def get_replicas(self, service_name: str):
-        with grpc.insecure_channel(self.args.ed_host) as channel:
-            stub = ed_grpc.DeploymentOperationsStub(channel)
-            resp = stub.GetPodReplicas(ed_pb.Deployment(
-                name=service_name,
-                namespace=self.args.k8s_namespace
-            ))
-        return resp.replicas
-
     def set_running_replicas(self, service_name: str, replicas: int):
         with grpc.insecure_channel(self.args.ed_host) as channel:
             stub = ed_grpc.DeploymentOperationsStub(channel)
             stub.SetRunningPodReplicas(ed_pb.DeploymentReplicasOpsRequest(
-                target_replicas=replicas,
-                target=ed_pb.Deployment(name=service_name, namespace=self.args.k8s_namespace)
-            ))
-
-    def set_replicas(self, service_name: str, replicas: int):
-        with grpc.insecure_channel(self.args.ed_host) as channel:
-            stub = ed_grpc.DeploymentOperationsStub(channel)
-            stub.SetPodReplicas(ed_pb.DeploymentReplicasOpsRequest(
                 target_replicas=replicas,
                 target=ed_pb.Deployment(name=service_name, namespace=self.args.k8s_namespace)
             ))
@@ -116,7 +157,7 @@ class Scaler(object):
         return res
 
     def get_service_time(self, service_name, endpoint_name, window_size, limit):
-        sql = f"SELECT pt_mean,rt_mean,time  FROM {self.response_time_table} WHERE " \
+        sql = f"SELECT pt_mean,rt_mean,time  FROM service_time_stats WHERE " \
               f"sn = '{service_name}' and en = '{endpoint_name}' and cluster = 'production' " \
               f"and window_size = {window_size} " \
               f"ORDER BY _time DESC " \
@@ -125,9 +166,31 @@ class Scaler(object):
         data = self.sql_driver.exec(sql)
 
         return data.rt_mean.values, data.pt_mean.values
+    
+    def get_endpoint_execution_time_95th(self, service_name, endpoint_name, window_size, limit):
+        sql = f"SELECT pt_95th,time  FROM service_time_stats WHERE " \
+              f"sn = '{service_name}' and en = '{endpoint_name}' and cluster = 'production' " \
+              f"and window_size = {window_size} " \
+              f"ORDER BY _time DESC " \
+              f"LIMIT {limit};"
 
-    def get_ac_task_max2(self, src_svc, src_ep, dst_svc, dst_ep, window_size, limit) -> np.ndarray:
-        sql = f"SELECT ac_task_max,time FROM {self.task_stats_table2} WHERE " \
+        data = self.sql_driver.exec(sql)
+
+        return data.pt_95th.values
+    
+    def get_endpoint_response_time_mean(self, service_name, endpoint_name, window_size, limit):
+        sql = f"SELECT rt_mean,time  FROM response_time WHERE " \
+              f"sn = '{service_name}' and en = '{endpoint_name}' and (cluster = 'production' or cluster = 'cluster') " \
+              f"and window_size = {window_size} " \
+              f"ORDER BY _time DESC " \
+              f"LIMIT {limit};"
+
+        data = self.sql_driver.exec(sql)
+
+        return data.rt_mean.values
+
+    def get_ac_task_max_from_src(self, src_svc, src_ep, dst_svc, dst_ep, window_size, limit) -> np.ndarray:
+        sql = f"SELECT ac_task_max,time FROM response_time2 WHERE " \
               f"src_sn = '{src_svc}' and src_en = '{src_ep}' and " \
               f"dst_sn = '{dst_svc}' and dst_en = '{dst_ep}' and " \
               f"window_size = {window_size} and " \
@@ -142,7 +205,7 @@ class Scaler(object):
         return data.ac_task_max.values
 
     def get_ac_task_max(self, service_name, endpoint_name, window_size, limit) -> np.ndarray:
-        sql = f"SELECT ac_task_max,time  FROM {self.task_stats_table} WHERE " \
+        sql = f"SELECT ac_task_max,time  FROM service_time_stats WHERE " \
               f"sn = '{service_name}' and en = '{endpoint_name}' and cluster = 'production' " \
               f"and window_size = {window_size} " \
               f"ORDER BY _time DESC " \
@@ -153,7 +216,7 @@ class Scaler(object):
         return data.ac_task_max.values
 
     def get_call_num(self, src_svc, src_ep, dst_svc, dst_ep):
-        sql = f"SELECT request_num,time FROM {self.request_num_table} WHERE " \
+        sql = f"SELECT request_num,time FROM response_time2 WHERE " \
               f"src_sn = '{src_svc}' and src_en = '{src_ep}' and " \
               f"dst_sn = '{dst_svc}' and dst_en = '{dst_ep}' and " \
               f"window_size = {WINDOW_SIZE_S * 1000} and " \
@@ -167,7 +230,7 @@ class Scaler(object):
         return np.mean(request_num_values), np.max(request_num_values), np.min(request_num_values)
 
     def get_call_num2(self, service_name, endpoint_name, limit):
-        sql = f"SELECT request_num,time  FROM {self.request_num_table2} WHERE " \
+        sql = f"SELECT request_num,time  FROM service_time_stats WHERE " \
               f"sn = '{service_name}' and en = '{endpoint_name}' and cluster = 'production' " \
               f"and window_size = {WINDOW_SIZE_S * 1000} " \
               f"ORDER BY _time DESC " \
@@ -178,17 +241,22 @@ class Scaler(object):
         return data.request_num.values
 
 
+cache = dict()
+cache_lock = threading.Lock()
+
+USE_ENBPI = False 
+
 class MicroKubeScaler(Scaler):
-    def __init__(self, args, root_endpoints: List[ServiceEndpointPair], service_configs: Dict,
+    def __init__(self, args, logger, root_endpoints: List[ServiceEndpointPair], service_configs: Dict,
                  sttf_estimator: SttfEstimator | None, lttf_estimator: Any | None):
 
-        super().__init__(args, service_configs)
+        super().__init__(args, logger, service_configs)
         if sttf_estimator is not None:
-            print('use short term time-series estimator')
+            self.logger.info('use short term time-series estimator')
         self.sttf_estimator = sttf_estimator
 
         if lttf_estimator is not None:
-            print('use long term time-series estimator')
+            self.logger.info('use long term time-series estimator')
         self.lttf_estimator = lttf_estimator
 
         self.root_endpoints = root_endpoints
@@ -198,6 +266,9 @@ class MicroKubeScaler(Scaler):
         self.l2_sync_period_sec = args.l2_sync_period_sec
 
         self.args = args
+        self.logger = logger
+        
+        self.k8s_apps_v1 = client.AppsV1Api() 
 
         self.prev_sttf_upper_bound = dict()
 
@@ -210,15 +281,22 @@ class MicroKubeScaler(Scaler):
         )
         self.sg = ServiceGraph(neo4j_url=args.neo4j_url)
         self.neo4j_project_name = args.neo4j_project_name
-
-        self.response_time_table = args.response_time_table
-        self.task_stats_table2 = args.task_stats_table2
-        self.task_stats_table = args.task_stats_table
-        self.request_num_table2 = args.request_num_table2
-        self.request_num_table = args.request_num_table
+        
+        self.pred_time_stat_file = open('stat_pred_time.csv', 'w+')
+        self.estm_time_stat_file = open('stat_estm_time.csv', 'w+')
+        self.total_time_stat_file = open('stat_total_time.csv', 'w+')
+        
+        self.pred_time_stat_file.write('value\n')
+        self.pred_time_stat_file.flush()
+        self.estm_time_stat_file.write('value\n')
+        self.estm_time_stat_file.flush()
+        self.total_time_stat_file.write('value\n')
+        self.total_time_stat_file.flush()
+        
+        self.stat_lock = threading.Lock()
 
     def start(self):
-        print('Scaler starting ...')
+        self.logger.info('MicroKube scaler starting ...')
         l2_start_time = time.time()
         cur_time = time.time()
         while True:
@@ -229,6 +307,7 @@ class MicroKubeScaler(Scaler):
             results_lock = threading.Lock()
 
             threads = list()
+            total_t0 = time.time()
             for pair in self.root_endpoints:
                 if self.sttf_estimator is not None:
                     t = threading.Thread(target=self.start_l1_scaling,
@@ -248,10 +327,14 @@ class MicroKubeScaler(Scaler):
                 res = results.get(key)
                 for service_name in res:
                     g_res[service_name] = g_res.get(service_name, 0) + res[service_name]
-
-            print('l1 scaling parallelism needed result:')
+            total_t1 = time.time()
+            self.stat_lock.acquire()
+            self.total_time_stat_file.write(str((total_t1 - total_t0) * 1000) + '\n')
+            self.total_time_stat_file.flush()
+            self.stat_lock.release()
+            self.logger.info('parallelism needed result:')
             for service_name in g_res:
-                print(f'\t{service_name} need {format(g_res[service_name], ".2f")} parallelism')
+                self.logger.info(f'\t{service_name} need {format(g_res[service_name], ".2f")} parallelism')
 
             self.do_l1_scaling(g_res)
 
@@ -263,47 +346,89 @@ class MicroKubeScaler(Scaler):
     def do_l1_scaling(self, results: Dict[str, int]):
         for service_name in results:
             max_thread = self.get_service_max_thread(service_name)
-            all_replicas = self.get_replicas(service_name)
+            k8s_name = self.get_k8s_name(service_name)
+            cur_replicas, deployment = self.get_k8s_deployment_replicas(
+                self.k8s_apps_v1, k8s_name
+            )
 
-            thread_need = results[service_name]
+            thread_need = results.get(service_name)
             running_replicas_need = math.ceil(thread_need / max_thread)
 
-            replicas_need = all_replicas
-            if all_replicas < running_replicas_need + 3:
-                replicas_need = running_replicas_need + 3
-            replicas_need = min(self.get_service_max_replicas(service_name), replicas_need)
+            # TODO 
+            #replicas_need = cur_replicas
+            #if cur_replicas < running_replicas_need + 3:
+            #    replicas_need = running_replicas_need + 3
+            #replicas_need = min(self.get_service_max_replicas(service_name), replicas_need)
+            
+            replicas_need = min(self.get_service_max_replicas(service_name), running_replicas_need)
 
             # TODO
             # elif all_replicas > running_replicas_need + 6:
             #     replicas_need = running_replicas_need + 6
 
-            print(f'(MicroKube L1 Autoscaler) ==> {service_name} need {running_replicas_need} running replicas.')
-            print(f'(MicroKube L1 Autoscaler) ==> {service_name} need {replicas_need} replicas.')
+            #self.logger.debug(f'(MicroKube L1 Autoscaler) ==> {service_name} need {running_replicas_need} running replicas.')
+            self.logger.debug(f'(Microservice Autoscaler) ==> {service_name} need {replicas_need} replicas.')
 
-            self.set_running_replicas(service_name, running_replicas_need)
-            self.set_replicas(service_name, replicas_need)
+            #self.set_running_replicas(service_name, running_replicas_need)
+            #self.set_replicas(service_name, replicas_need)
+            self.set_k8s_deployment_replicas(
+                self.k8s_apps_v1, k8s_name, replicas_need, deployment
+            )
 
     def start_l1_scaling(self, service_name: str, endpoint_name: str, results, results_lock):
-        _, upper_bound, _, last_value = self.sttf_estimator.predict(service_name, endpoint_name)
+        predict_value, upper_bound, _, last_value, use_time = self.sttf_estimator.predict(service_name, endpoint_name)
 
         key = f'{service_name}:{endpoint_name}'
         # thread_need = max(last_value, self.prev_sttf_upper_bound.get(key, 0))
-        thread_need = max(last_value, upper_bound)
-        self.prev_sttf_upper_bound[key] = upper_bound
+        if USE_ENBPI:
+            thread_need = max(last_value, upper_bound)
+        else:
+            thread_need = predict_value + 10
+        # self.prev_sttf_upper_bound[key] = upper_bound
 
         res = dict()
 
         t0 = time.time()
         thread_need += L1_OFFSET
-        self.calculate_parallelism(service_name, endpoint_name, thread_need, res)
-        print(f'l1 scaling use {time.time() - t0} seconds calculate concurrency')
+        estm_t0 = time.time()
+        self.cal_parallelism(service_name, endpoint_name, thread_need, res)
+        estm_t1 = time.time()
+        self.logger.debug(f'scaling use {time.time() - t0} seconds calculate concurrency')
+        
+        self.stat_lock.acquire()
+        self.estm_time_stat_file.write(str((estm_t1 - estm_t0) * 1000) + '\n')
+        self.estm_time_stat_file.flush()
+        self.pred_time_stat_file.write(str(use_time * 1000) + '\n')
+        self.pred_time_stat_file.flush()
+        self.stat_lock.release()
 
         results_lock.acquire()
         key = f'l1-{service_name}:{endpoint_name}'
         results[key] = res
         results_lock.release()
+        
+    def refresh_weight(self, src_sn, src_en, dst_src, dst_en, cache_key):
+        def do_refresh():
+            cache_lock.acquire()
+            ac_task_max_from_src = self.get_ac_task_max_from_src(
+                src_sn, src_en, dst_src, dst_en, window_size=60000, limit=2)
+            if len(ac_task_max_from_src) == 0:
+                raise Exception('Data not enough.')
+            ac_task_max = self.get_ac_task_max(src_sn, src_en, window_size=60000, limit=2)
+            weight = min(1., float(np.mean(ac_task_max_from_src / ac_task_max)))
+            cache[cache_key] = dict(
+                value=weight,
+                last_sync_time=time.time()
+            )
+            cache_lock.release()
+        t = threading.Thread(target=do_refresh, daemon=True)
+        t.start()
 
-    def calculate_parallelism(self, service_name, endpoint_name, thread_need, res):
+    def cal_parallelism(self, 
+                        service_name: str, 
+                        endpoint_name: str, 
+                        thread_need, 
+                        res: Dict):
         res[service_name] = res.get(service_name, 0) + thread_need
 
         downstream = self.get_downstream(service_name, endpoint_name)
@@ -312,202 +437,230 @@ class MicroKubeScaler(Scaler):
             d_endpoint_name = downstream_service.get('endpoint_name')
 
             cache_key = f'l1-{service_name}:{endpoint_name}=>{d_service_name}:{d_endpoint_name}'
-
-            if cache_key in cache and time.time() - cache.get(cache_key).get('last_sync_time') <= 10 * 60:
-                _thread_need = thread_need * cache.get(cache_key).get('value')
-            else:
-                ac_task_max2 = self.get_ac_task_max2(service_name, endpoint_name, d_service_name, d_endpoint_name,
-                                                     window_size=60000, limit=2)
-                if len(ac_task_max2) == 0:
-                    continue
-                ac_task_max = self.get_ac_task_max(service_name, endpoint_name, window_size=60000, limit=2)
-                weight = min(1., float(np.mean(ac_task_max2 / ac_task_max)))
-
-                _thread_need = thread_need * weight
-                cache[cache_key] = dict(
-                    value=weight,
-                    last_sync_time=time.time()
+            
+            cache_lock.acquire()
+            if (cache_key not in cache) or (time.time() - cache.get(cache_key).get('last_sync_time') > 10 * 60):
+                self.refresh_weight(
+                    service_name,
+                    endpoint_name,
+                    d_service_name,
+                    d_endpoint_name,
+                    cache_key
                 )
+            if cache_key in cache:
+                weight = cache.get(cache_key).get('value')
+            else:
+                cache_lock.release()
+                continue
+            cache_lock.release()
+            _thread_need = thread_need * weight
 
-            print(cache_key, f'weight: {cache.get(cache_key).get("value")}')
+            self.logger.debug(cache_key, f'weight: {cache.get(cache_key).get("value")}')
+            self.cal_parallelism(d_service_name, d_endpoint_name, _thread_need, res)
 
-            self.calculate_parallelism(d_service_name, d_endpoint_name, _thread_need, res)
 
+COUNT = 1
+SLEEP = 10
+
+exclude_services = {
+    'locust', 'CastInfoService', 'MovieInfoService', 'PlotService'
+}
 
 class AIMDHScaler(Scaler):
-    def __init__(self, args, service_configs: Dict):
+    def __init__(self, args, logger, service_configs: Dict):
 
-        super().__init__(args, service_configs)
+        super().__init__(args, logger, service_configs)
         self.args = args
         self.sg = ServiceGraph(neo4j_url=args.neo4j_url)
 
-        from kubernetes import client, config
-
-        config.load_kube_config(config_file='E:\\Projects\\microkube-python-master\\microkube-python-master\\config\\kubernetes\\config')
-        self.k8s_apps_v1 = client.AppsV1Api()
+        self.k8s_apps_v1 = client.AppsV1Api() 
 
         self.a = 1
-        self.b = 2
-
-        pg_param = dict(
-            host="222.201.144.196",
-            port=5432,
-            database="trainticket",
-            user="postgres",
-            password="Admin@123_."
-        )
-
-        self.locust_sql_driver = PostgresqlDriver(**pg_param)
-
-    def get_endpoint_rt(self, url, method, limit):
-        sql = f"SELECT response_time  FROM locust WHERE " \
-              f"url = '{url}' and method = '{method}' " \
-              f"ORDER BY start_time DESC " \
-              f"LIMIT {limit};"
-
-        data = self.locust_sql_driver.exec(sql)
-
-        return data.response_time.values
+        self.b = 1.5
+        
+        self.cache = dict()
+        
+        self.logger = logger 
 
     def start(self):
-        print('Start AIMD-H Autoscaler.')
+        self.logger.info('Start AIMD-H Autoscaler.')
         services = self.sg.match_services(self.args.neo4j_project_name)
         threads = list()
 
-        target_svc = None
-        for service in services:
-            if service.get('name') == 'travel-plan-service':
-                target_svc = service
-                break
-
         for svc in services:
-            t = threading.Thread(target=self.do_scaling,
-                                 args=(svc, target_svc),
-                                 daemon=True)
+            if svc.get('name') in exclude_services:
+                continue
+            t = threading.Thread(target=self.do_scaling, args=(svc, ), daemon=True)
             threads.append(t)
             t.start()
 
         for thread in threads:
             thread.join()
 
-    def do_scaling(self, service, target):
-        endpoints = self.sg.match_endpoints(target)
+    def do_scaling(self, service):
+        endpoints = self.sg.match_endpoints(service)
         max_replicas = self.get_service_max_replicas(service.get('name'))
+        
+        service_name = service.get('name')
+        
+        self.cache[service_name] = dict()
+        self.cache[service_name]['__count__'] = COUNT 
 
         while True:
             queueing = False
             ok = False
-            for i in endpoints:
-                locust_rt = self.get_endpoint_rt('/wrk2-api/review/compose', 'POST', 10)
-                rt_mean = np.mean(locust_rt)
-                # rt_mean_values, pt_mean_values = self.get_service_time(target.get('name'), i.get('uri'), 5000, 1)
-                # if len(rt_mean_values) == 0 or len(pt_mean_values) == 0:
-                #     continue
-                # if rt_mean_values[0] > self.get_service_aimd_threshold(target.get('name')):
-                if rt_mean > 2 * 1000000000:
-                    ok = True
-                    queueing = True
-                    break
-                ok = True
-
-            k8s_name = self.get_k8s_name(service.get('name'))
-            deployment = self.k8s_apps_v1.read_namespaced_deployment(
-                name=k8s_name, namespace=self.args.k8s_namespace)
-            cur_replicas = deployment.spec.replicas
-
-            increase = False
-            if ok:
-                if not queueing:
-                    target_replicas = max(1, cur_replicas - self.a)
-                    print(f'[{service.get("name")}] decrease {self.a} replicas.')
+            
+            for ep in endpoints:
+                ep_uri = ep.get('uri')
+                rt_mean_values = self.get_endpoint_response_time_mean(service_name, ep_uri, 5000, 60)
+                if len(rt_mean_values) == 0:
+                    continue 
+                rt_mean = np.mean(rt_mean_values)
+                if ep_uri not in self.cache[service_name]:
+                    """ initialize """
+                    self.logger.info(f'[{service.get("name")}:{ep.get("uri")}-INIT] target response time is {rt_mean}.')
+                    self.cache[service_name][ep_uri] = rt_mean 
+                    continue 
                 else:
-                    target_replicas = min(max_replicas, cur_replicas * self.b)
-                    increase = True
-                    print(f'[{service.get("name")}] increase {self.b * cur_replicas - cur_replicas} replicas.')
-            else:
-                target_replicas = -1
-                print(f'[{service.get("name")}] nothing done.')
+                    ok = True 
+                    tgt_rt_mean = self.cache[service_name][ep_uri]
+                    if rt_mean > (tgt_rt_mean * 1.1):
+                        queueing = True  
+            
+            if not ok:
+                time.sleep(SLEEP)
+                continue
+            
+            k8s_name = self.get_k8s_name(service.get('name'))
+            while True:
+                try:
+                    deployment = self.k8s_apps_v1.read_namespaced_deployment(
+                        name=k8s_name, namespace=self.args.k8s_namespace)
+                    cur_replicas = deployment.spec.replicas
+                    break 
+                except Exception as e:
+                    self.logger.error(e)
+                time.sleep(random.random() * 5)
 
-            if target_replicas > 0:
+            if not queueing:
+                if self.cache[service_name]['__count__'] == 0:
+                    target_replicas = max(1, cur_replicas - self.a)
+                    self.cache[service_name]['__count__'] = COUNT 
+                else:
+                    target_replicas = cur_replicas 
+            else:
+                target_replicas = min(max_replicas, cur_replicas * self.b)
+                self.cache[service_name]['__count__'] = COUNT 
+            
+            target_replicas = math.ceil(target_replicas)
+            if target_replicas == cur_replicas:
+                self.logger.info(f'[{service.get("name")}] nothing done.')
+            elif target_replicas < cur_replicas:
+                self.logger.info(f'[{service.get("name")}] decrease {self.a} replicas.')
+            else:
+                self.logger.info(f'[{service.get("name")}] increase {self.b * cur_replicas - cur_replicas} replicas.')
+
+            if target_replicas != cur_replicas:
                 while True:
                     try:
-                        deployment = self.k8s_apps_v1.read_namespaced_deployment(
-                            name=k8s_name, namespace=self.args.k8s_namespace)
                         deployment.spec.replicas = target_replicas
                         _ = self.k8s_apps_v1.patch_namespaced_deployment(
                             name=k8s_name, namespace=self.args.k8s_namespace,
                             body=deployment
                         )
                         break
-                    except:
-                        print(f'update {service.get("name")} exception')
-                    time.sleep(0.5)
-
-            if increase:
-                time.sleep(70)
-            else:
-                time.sleep(20)
+                    except Exception as e:
+                        self.logger.error(f'update {service.get("name")} exception: {str(e)}')
+                        deployment = self.k8s_apps_v1.read_namespaced_deployment(
+                            name=k8s_name, namespace=self.args.k8s_namespace)
+                    time.sleep(random.random() * 5)
+            
+            self.cache[service_name]['__count__'] -= 1
+            time.sleep(SLEEP)
 
 class AIMDVScaler(Scaler):
-    def __init__(self, args, service_configs: Dict):
-        super().__init__(args, service_configs)
+    def __init__(self, args, logger, service_configs: Dict):
+        super().__init__(args, logger, service_configs)
         self.args = args
         self.sg = ServiceGraph(neo4j_url=args.neo4j_url)
-
-        from kubernetes import client, config
-
-        config.load_kube_config()
+        
         self.k8s_apps_v1 = client.AppsV1Api()
+        
+        self.cache = dict()
 
-        self.min_cpu_per_container = 300
-        self.max_cpu_per_container = 1000
-        self.cpu_step = 40
-        self.b = 1.5
+        self.b = 1.2
+        
+        self.logger = logger 
 
     def start(self):
         print('Start AIMD-V Autoscaler.')
         services = self.sg.match_services(self.args.neo4j_project_name)
         threads = list()
 
-        target_svc = None
-        for service in services:
-            if service.get('name') == 'travel-plan-service':
-                target_svc = service
-                break
-
         for svc in services:
-            t = threading.Thread(target=self.do_scaling,
-                                 args=(svc, target_svc),
-                                 daemon=True)
+            if svc.get('name') in exclude_services:
+                continue
+            t = threading.Thread(target=self.do_scaling, args=(svc, ), daemon=True)
             threads.append(t)
             t.start()
 
         for thread in threads:
             thread.join()
 
-    def do_scaling(self, service, target):
-        endpoints = self.sg.match_endpoints(target)
+    def do_scaling(self, service):
+        endpoints = self.sg.match_endpoints(service)
         max_replicas = self.get_service_max_replicas(service.get('name'))
+        
+        service_name = service.get('name')
+        
+        self.cache[service_name] = dict()
+        self.cache[service_name]['__count__'] = COUNT 
 
         while True:
             queueing = False
             ok = False
-            for i in endpoints:
-                rt_mean_values, pt_mean_values = self.get_service_time(target.get('name'), i.get('uri'), 5000, 1)
-                if len(rt_mean_values) == 0 or len(pt_mean_values) == 0:
+            for ep in endpoints:
+                ep_uri = ep.get('uri')
+                rt_mean_values = self.get_endpoint_response_time_mean(service_name, ep_uri, 5000, 3)
+                if len(rt_mean_values) == 0:
                     continue
-                if rt_mean_values[0] > self.get_service_aimd_threshold(target.get('name')):
-                    ok = True
-                    queueing = True
-                    break
-                ok = True
-
-            deployment = self.k8s_apps_v1.read_namespaced_deployment(name=service.get('name'), namespace=self.args.k8s_namespace)
-            cur_replicas = deployment.spec.replicas
-
+                rt_mean = np.mean(rt_mean_values)
+                if ep_uri not in self.cache[service_name]:
+                    """ initialize """
+                    self.logger.info(f'[{service.get("name")}:{ep.get("uri")}-INIT] target response time is {rt_mean}.')
+                    self.cache[service_name][ep_uri] = rt_mean 
+                    continue 
+                else:
+                    ok = True 
+                    tgt_rt_mean = self.cache[service_name][ep_uri]
+                    if rt_mean > (tgt_rt_mean * 1.5):
+                        queueing = True 
+                        
+            if not ok:
+                time.sleep(SLEEP)
+                continue
+            
+            k8s_name = self.get_k8s_name(service.get('name'))
+            not_ready = False 
+            while True:
+                try:
+                    deployment = self.k8s_apps_v1.read_namespaced_deployment(
+                        name=k8s_name, namespace=self.args.k8s_namespace)
+                    cur_replicas = deployment.spec.replicas
+                    if deployment.status.ready_replicas != cur_replicas:
+                        not_ready = True 
+                    if deployment.status.updated_replicas != cur_replicas:
+                        not_ready = True 
+                    break 
+                except Exception as e:
+                    self.logger.error(e)
+                time.sleep(random.random() * 5)
+            if not_ready:
+                time.sleep(SLEEP)
+                continue 
             container = None
             for c in deployment.spec.template.spec.containers:
-                if c.name == service.get('name'):
+                if c.name == k8s_name:
                     container = c
                     break
             if container is None:
@@ -519,56 +672,51 @@ class AIMDVScaler(Scaler):
             else:
                 cur_cpu_limit = int(cur_cpu_limit[:-1])
             cur_all_cpu = int(cur_cpu_limit * cur_replicas)
+            cur_all_cpu = min(self.get_cpu_limit_max(service_name) * cur_replicas, cur_all_cpu)
 
-            increase = False
-            if ok:
-                if not queueing:
-                    target_cpu_limit = max(self.min_cpu_per_container, cur_all_cpu - self.cpu_step)
-                    print(f'[{service.get("name")}] decrease {self.cpu_step} cpu allocation.')
+            if not queueing:
+                if self.cache[service_name]['__count__'] == 0:
+                    target_cpu_limit = max(self.get_cpu_limit_min(service_name), cur_all_cpu - cur_replicas * self.get_cpu_limit_dec_step(service_name))
+                    self.cache[service_name]['__count__'] = COUNT 
                 else:
-                    target_cpu_limit = min(max_replicas * self.max_cpu_per_container, math.ceil(cur_all_cpu * self.b))
-                    print(f'[{service.get("name")}] increase {target_cpu_limit - cur_all_cpu} cpu allocation.')
+                    self.cache[service_name]['__count__'] -= 1
+                    time.sleep(SLEEP)
+                    continue 
             else:
-                target_cpu_limit = -1
-                print(f'[{service.get("name")}] nothing done.')
+                target_cpu_limit = min(max_replicas * self.get_cpu_limit_max(service_name), math.ceil(cur_all_cpu * self.b))
+                self.cache[service_name]['__count__'] = COUNT 
 
-            if target_cpu_limit > 0:
-                while True:
-                    try:
-                        per_container_cpu = math.ceil(target_cpu_limit / cur_replicas)
-                        if per_container_cpu < self.min_cpu_per_container:
-                            target_replicas = math.ceil(target_cpu_limit / self.min_cpu_per_container)
-                            target_cpu_limit = self.min_cpu_per_container
-                        elif per_container_cpu > self.max_cpu_per_container:
-                            target_replicas = math.ceil(target_cpu_limit / self.max_cpu_per_container)
-                            target_cpu_limit = self.max_cpu_per_container
-                        else:
-                            target_replicas = cur_replicas
-                            target_cpu_limit = per_container_cpu
+            while True:
+                per_container_cpu = int(target_cpu_limit / cur_replicas)
+                if per_container_cpu < self.get_cpu_limit_min(service_name):
+                    target_replicas = math.ceil(target_cpu_limit / self.get_cpu_limit_min(service_name))
+                    if target_replicas == cur_replicas:
+                        target_replicas = cur_replicas - 1 
+                    target_cpu_limit = self.get_cpu_limit_min(service_name)
+                elif per_container_cpu > self.get_cpu_limit_max(service_name):
+                    target_replicas = math.ceil(target_cpu_limit / self.get_cpu_limit_max(service_name))
+                    target_cpu_limit = self.get_cpu_limit_max(service_name)
+                else:
+                    target_replicas = cur_replicas
+                    target_cpu_limit = per_container_cpu
 
-                        target_replicas = min(max_replicas, target_replicas)
-                        target_replicas = max(1, target_replicas)
-                        if target_replicas > cur_replicas:
-                            increase = True
-                        deployment = self.k8s_apps_v1.read_namespaced_deployment(name=service.get('name'), namespace=self.args.k8s_namespace)
-                        for container in deployment.spec.template.spec.containers:
-                            if container.name == service.get('name'):
-                                print(f'service {service.get("name")} cpu -> {target_cpu_limit}m')
-                                container.resources.limits = {
-                                    'cpu': f'{target_cpu_limit}m'
-                                }
-                                break
-                        deployment.spec.replicas = target_replicas
-                        _ = self.k8s_apps_v1.patch_namespaced_deployment(
-                            name=service.get('name'), namespace=self.args.k8s_namespace,
-                            body=deployment
-                        )
-                        break
-                    except Exception as e:
-                        print(f'update {service.get("name")} exception: {e}')
-                    time.sleep(0.5)
-
-            if increase:
-                time.sleep(70)
-            else:
-                time.sleep(10)
+                target_replicas = min(max_replicas, target_replicas)
+                target_replicas = max(1, target_replicas)
+                for container in deployment.spec.template.spec.containers:
+                    if container.name == k8s_name:
+                        self.logger.info(f'service {k8s_name} cpu {cur_cpu_limit}m -> {target_cpu_limit}m\treplicas {cur_replicas} -> {target_replicas}')
+                        container.resources.limits = { 'cpu': f'{target_cpu_limit}m' }
+                        break 
+                deployment.spec.replicas = target_replicas
+                try:
+                    _ = self.k8s_apps_v1.patch_namespaced_deployment(
+                        name=k8s_name, namespace=self.args.k8s_namespace,
+                        body=deployment
+                    )
+                    break
+                except Exception as e:
+                    deployment = self.k8s_apps_v1.read_namespaced_deployment(name=k8s_name, namespace=self.args.k8s_namespace)
+                    self.logger.error(e)
+                time.sleep(random.random() * 5)
+            self.cache[service_name]['__count__'] -= 1
+            time.sleep(SLEEP)

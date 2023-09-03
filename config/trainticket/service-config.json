@@ -2,116 +2,139 @@
   "travel-plan-service": {
     "max-thread": 20,
     "max-replicas": 19,
-    "aimd-threshold": 1000
+    "aimd-threshold": 1000,
+    "k8s-name": "travel-plan-service"
   },
   "food-service": {
     "max-thread": 20,
     "max-replicas": 5,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "food-service"
   },
   "food-map-service": {
     "max-thread": 20,
     "max-replicas": 5,
-    "aimd-threshold": 2
+    "aimd-threshold": 2,
+    "k8s-name": "food-map-service"
   },
   "config-service": {
     "max-thread": 20,
     "max-replicas": 6,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "config-service"
   },
   "assurance-service": {
     "max-thread": 20,
     "max-replicas": 3,
-    "aimd-threshold": 2
+    "aimd-threshold": 2,
+    "k8s-name": "assurance-service"
   },
   "auth-service": {
     "max-thread": 20,
     "max-replicas": 3,
-    "aimd-threshold": 2
+    "aimd-threshold": 2,
+    "k8s-name": "auth-service"
   },
   "basic-service": {
     "max-thread": 20,
     "max-replicas": 12,
-    "aimd-threshold": 1.25
+    "aimd-threshold": 1.25,
+    "k8s-name": "basic-service"
   },
   "order-other-service": {
     "max-thread": 20,
     "max-replicas": 3,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "order-other-service"
   },
   "order-service": {
     "max-thread": 20,
     "max-replicas": 5,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "order-service"
   },
   "preserve-service": {
     "max-thread": 20,
     "max-replicas": 3,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "preserve-service"
   },
   "preserve-other-service": {
     "max-thread": 20,
     "max-replicas": 3,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "preserve-other-service"
   },
   "price-service": {
     "max-thread": 20,
     "max-replicas": 4,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "price-service"
   },
   "route-plan-service": {
     "max-thread": 20,
     "max-replicas": 15,
-    "aimd-threshold": 1.25
+    "aimd-threshold": 1.25,
+    "k8s-name": "route-plan-service"
   },
   "route-service": {
     "max-thread": 20,
     "max-replicas": 14,
-    "aimd-threshold": 4
+    "aimd-threshold": 4,
+    "k8s-name": "route-service"
   },
   "seat-service": {
     "max-thread": 20,
     "max-replicas": 8,
-    "aimd-threshold": 2
+    "aimd-threshold": 2,
+    "k8s-name": "seat-service"
   },
   "station-service": {
     "max-thread": 20,
     "max-replicas": 18,
-    "aimd-threshold": 3
+    "aimd-threshold": 3,
+    "k8s-name": "station-service"
   },
   "ticketinfo-service": {
     "max-thread": 20,
     "max-replicas": 13,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "ticketinfo-service"
   },
   "train-service": {
     "max-thread": 20,
     "max-replicas": 7,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "train-service"
   },
   "travel2-b-service": {
     "max-thread": 20,
     "max-replicas": 3,
-    "aimd-threshold": 3
+    "aimd-threshold": 3,
+    "k8s-name": "travel2-b-service"
   },
   "travel2-service": {
     "max-thread": 20,
     "max-replicas": 5,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "travel2-service"
   },
   "travel-b-service": {
     "max-thread": 20,
     "max-replicas": 8,
-    "aimd-threshold": 2.5
+    "aimd-threshold": 2.5,
+    "k8s-name": "travel-b-service"
   },
   "travel-service": {
     "max-thread": 20,
     "max-replicas": 18,
-    "aimd-threshold": 2.5
+    "aimd-threshold": 2.5,
+    "k8s-name": "travel-service"
   },
   "verify-code-service": {
     "max-thread": 20,
     "max-replicas": 3,
-    "aimd-threshold": 1.5
+    "aimd-threshold": 1.5,
+    "k8s-name": "verify-code-service"
   }
 }

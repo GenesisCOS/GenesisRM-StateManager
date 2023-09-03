@@ -4,107 +4,107 @@
     "max-replicas": 20,
     "aimd-threshold": 1000,
     "k8s-name": "cast-info-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 20,
+    "cpu-limit-min": 10,
+    "cpu-limit-dec-step": 1
   },
   "ComposeReviewService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.5,
     "k8s-name": "compose-review-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 600,
+    "cpu-limit-min": 450,
+    "cpu-limit-dec-step": 30
   },
   "MovieIdService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 2,
     "k8s-name": "movie-id-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 260,
+    "cpu-limit-min": 150,
+    "cpu-limit-dec-step": 20
   },
   "MovieInfoService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.5,
     "k8s-name": "movie-info-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 20,
+    "cpu-limit-min": 10,
+    "cpu-limit-dec-step": 1
   },
   "MovieReviewService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 2,
     "k8s-name": "movie-review-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 180,
+    "cpu-limit-min": 50,
+    "cpu-limit-dec-step": 30
   },
   "PlotService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 2,
     "k8s-name": "plot-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 20,
+    "cpu-limit-min": 10,
+    "cpu-limit-dec-step": 1
   },
   "RatingService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.25,
     "k8s-name": "rating-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 240,
+    "cpu-limit-min": 150,
+    "cpu-limit-dec-step": 20
   },
   "ReviewStorageService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.5,
     "k8s-name": "review-storage-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 80,
+    "cpu-limit-min": 40,
+    "cpu-limit-dec-step": 10
   },
   "TextService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.5,
     "k8s-name": "text-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 150,
+    "cpu-limit-min": 80,
+    "cpu-limit-dec-step": 15
   },
   "UniqueIdService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.5,
     "k8s-name": "unique-id-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 150,
+    "cpu-limit-min": 100,
+    "cpu-limit-dec-step": 10
   },
   "UserReviewService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.5,
     "k8s-name": "user-review-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 150,
+    "cpu-limit-min": 100,
+    "cpu-limit-dec-step": 10
   },
   "UserService": {
     "max-thread": 10,
     "max-replicas": 20,
     "aimd-threshold": 1.5,
     "k8s-name": "user-service",
-    "cpu-limit-max": 2000,
-    "cpu-limit-min": 1000,
-    "cpu-limit-dec-step": 200
+    "cpu-limit-max": 160,
+    "cpu-limit-min": 120,
+    "cpu-limit-dec-step": 10
   }
 }

@@ -3,9 +3,10 @@ import os
 import argparse
 import json
 import threading
+import logging 
 from concurrent import futures
 
-import grpc
+# import grpc
 
 # from . import Autoscaler
 # from . import AutoscalerGrpcServicer
@@ -69,7 +70,7 @@ parser.add_argument(
 )
 parser.add_argument(
     '--elastic-deployment-url',
-    dest='ed_url', required=True,
+    dest='ed_url', required=False,
     help='GRPC url of elastic deployment module.'
 )
 parser.add_argument(
@@ -122,31 +123,6 @@ parser.add_argument(
     help='sttf label data length'
 )
 parser.add_argument(
-    '--response-time-table', required=True,
-    type=str, dest='response_time_table',
-    help='database table record response times'
-)
-parser.add_argument(
-    '--task-stats-table', required=True,
-    type=str, dest='task_stats_table',
-    help='database table record task'
-)
-parser.add_argument(
-    '--task-stats-table2', required=True, type=str,
-    dest='task_stats_table2',
-    help='database table record task'
-)
-parser.add_argument(
-    '--request-num-table', required=True,
-    type=str, dest='request_num_table',
-    help='database table record request number'
-)
-parser.add_argument(
-    '--request-num-table2', required=True,
-    type=str, dest='request_num_table2',
-    help='database table record request number'
-)
-parser.add_argument(
     '--l1-sync-period-sec',
     type=int,
     dest='l1_sync_period_sec', required=False,
@@ -160,7 +136,7 @@ parser.add_argument(
 )
 parser.add_argument(
     '--elastic-deployment-host',
-    type=str, dest='ed_host', required=True,
+    type=str, dest='ed_host', required=False,
     help='elastic deployment host '
 )
 parser.add_argument(
@@ -193,8 +169,23 @@ parser.add_argument(
     dest='aimd_period',
     help='AIMD period'
 )
+parser.add_argument(
+    '--log-level', type=str, required=False,
+    default='info', 
+    dest='log_level'  
+)
 
 args = parser.parse_args()
+
+if args.log_level == 'info':
+    level = logging.INFO 
+elif args.log_level == 'debug':
+    level = logging.DEBUG
+else:
+    raise Exception(f'Unknown log level: {args.log_level}')
+    
+logging.basicConfig(level=level,
+                    format='%(asctime)s - %(filename)s - %(name)s - %(levelname)s> %(message)s')
 
 
 project_path = os.path.split(os.path.realpath(__file__))[0] + '/../'
@@ -235,17 +226,17 @@ def main():
         else:
             raise Exception(f'do not support {args.lttf_model}')
     if args.use_sttf:
-        sttf_estimator = SttfEstimator(args)
+        sttf_estimator = SttfEstimator(args, logging.getLogger(name='STTF'))
 
     if args.autoscaler == 'MicroKube':
         from .scaler import MicroKubeScaler
-        scaler = MicroKubeScaler(args, root_endpoints, service_configs, sttf_estimator, lttf_estimator)
+        scaler = MicroKubeScaler(args, logging.getLogger(name='MicroKubeScaler'), root_endpoints, service_configs, sttf_estimator, lttf_estimator)
     elif args.autoscaler == 'AIMD-H':
         from .scaler import AIMDHScaler
-        scaler = AIMDHScaler(args, service_configs)
+        scaler = AIMDHScaler(args, logging.getLogger(name='AIMD-H-Scaler'), service_configs)
     elif args.autoscaler == 'AIMD-V':
         from .scaler import AIMDVScaler
-        scaler = AIMDVScaler(args, service_configs)
+        scaler = AIMDVScaler(args, logging.getLogger(name='AIMD-V-Scaler'), service_configs)
     else:
         raise Exception(f'unsupported autoscaler {args.autoscaler}')
     t = threading.Thread(target=scaler.start, name='scaler-thread', daemon=True)
