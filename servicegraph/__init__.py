@@ -3,16 +3,6 @@ from typing import List
 from py2neo import Graph, Node, NodeMatcher, RelationshipMatcher
 
 
-class MicroService(object):
-    def __init__(self):
-        pass
-
-
-class MicroServiceEndpoint(object):
-    def __init__(self):
-        pass
-
-
 class ServiceGraph(object):
     def __init__(self, neo4j_url):
         self.driver = Graph(neo4j_url)
