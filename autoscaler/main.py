@@ -220,7 +220,7 @@ def main():
             raise Exception('The trained DeepAR model path must be specified')
 
         if args.lttf_model == 'lstm':
-            from .lttf.lstm import Predictor as LSTMPredictor
+            from .sttf.lstm import Predictor as LSTMPredictor
             lttf_estimator = LSTMPredictor(input_size=1, hidden_size=100, num_layers=1, output_size=1)
             lttf_estimator.to(lttf_estimator.device)
         else:
