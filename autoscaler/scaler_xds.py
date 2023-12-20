@@ -7,7 +7,7 @@ from typing import List, Dict, Any
 # import grpc
 import numpy as np
 
-from .sttf.estimator import Estimator as SttfEstimator
+from .ts_predictor.estimator import Estimator as SttfEstimator
 from .data import ServiceEndpointPair
 # from proto import elastic_deployment_pb2 as ed_pb
 # from proto import elastic_deployment_pb2_grpc as ed_grpc

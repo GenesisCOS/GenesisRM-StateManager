@@ -12,7 +12,7 @@ from concurrent import futures
 # from . import AutoscalerGrpcServicer
 # from proto import microkube_autoscaler_pb2_grpc as ma_grpc
 from .data import ServiceEndpointPair
-from .sttf.estimator import Estimator as SttfEstimator
+from .ts_predictor.estimator import Estimator as SttfEstimator
 
 
 parser = argparse.ArgumentParser('')
@@ -220,7 +220,7 @@ def main():
             raise Exception('The trained DeepAR model path must be specified')
 
         if args.lttf_model == 'lstm':
-            from .sttf.lstm import Predictor as LSTMPredictor
+            from .ts_predictor.lstm import Predictor as LSTMPredictor
             lttf_estimator = LSTMPredictor(input_size=1, hidden_size=100, num_layers=1, output_size=1)
             lttf_estimator.to(lttf_estimator.device)
         else:
