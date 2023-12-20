@@ -244,7 +244,7 @@ class Scaler(object):
 cache = dict()
 cache_lock = threading.Lock()
 
-USE_ENBPI = False 
+USE_ENBPI = True 
 
 class MicroKubeScaler(Scaler):
     def __init__(self, args, logger, root_endpoints: List[ServiceEndpointPair], service_configs: Dict,
