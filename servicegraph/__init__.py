@@ -26,6 +26,6 @@ class ServiceGraph(object):
         relas = self.relationship_matcher.match((None, endpoint), r_type="HAS")
         return [i.start_node for i in relas]
 
-    def match_downstream_endpoints(self, endpoint):
+    def match_target_endpoints(self, endpoint):
         relas = self.driver.match((endpoint,), "INVOKE")
         return [i.end_node for i in relas]

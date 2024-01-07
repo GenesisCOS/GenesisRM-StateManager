@@ -3,7 +3,10 @@
     "max-thread": 20,
     "max-replicas": 19,
     "aimd-threshold": 1000,
-    "k8s-name": "travel-plan-service"
+    "k8s-name": "travel-plan-service",
+    "response-time-slo": {
+      "/api/v1/travelplanservice/travelPlan/cheapest": 1000
+    }
   },
   "food-service": {
     "max-thread": 20,

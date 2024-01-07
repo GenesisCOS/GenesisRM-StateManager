@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from mapie.subsample import BlockBootstrap
 from mapie.regression import MapieTimeSeriesRegressor
+from sklearn.svm import SVR
 
 from util.postgresql import PostgresqlDriver
 
@@ -32,28 +33,11 @@ class SVREstimator(object):
 
 
 class Estimator(object):
-    r"""
-    Short term time-series forecasting estimator
-
-    Parameters
-    ----------
-    args:
-        System arguments
-    agg_function: str
-        enbpi aggregate function, default is `mean`
-    """
 
     def __init__(self, args, logger, agg_function='mean'):
-
-        if args.sttf_regressor == 'linear':
-            from sklearn.linear_model import LinearRegression
-            self.regressor = LinearRegression()
-        elif args.sttf_regressor == 'svr':
-            from sklearn.svm import SVR
-            self.raw_regressor = SVR()
-            self.regressor = SVR()
-        else:
-            raise Exception(f'Not support regressor {args.sttf_regressor}')
+            
+        self.raw_regressor = SVR()
+        self.regressor = SVR()
 
         self.bootstrap = BlockBootstrap(
             n_resamplings=60, length=10, overlapping=True, random_state=59
@@ -76,46 +60,58 @@ class Estimator(object):
         self.sample_y_len = args.sttf_sample_y_len
         self.alpha = args.sttf_alpha
 
-        self.logger.debug(f'sttf alpha: {self.alpha}')
-
     def predict(self, service_name, endpoint_name):
-        self.logger.debug(f'sttf predict max active task number of {service_name}:{endpoint_name}')
-        sql = f"SELECT ac_task_max,time  FROM service_time_stats WHERE " \
-              f"sn = '{service_name}' and en = '{endpoint_name}' and (cluster = 'production' or cluster = 'cluster') " \
-              f"and window_size = 5000 " \
-              f"ORDER BY _time DESC " \
-              f"LIMIT {self.history_len};"
+        self.logger.debug(f'Predicting throughput of {service_name}:{endpoint_name}.')
+        
+        # 0. Fetch data from postgresql
+        sql_start_time = time.time()
+        sql = f"SELECT " \
+              f"    (span_count / 5) AS throughput, " \
+              f"    time AS time " \
+              f"FROM " \
+              f"    span_stats " \
+              f"WHERE " \
+              f"    service_name = '{service_name}' AND " \
+              f"    endpoint_name = '{endpoint_name}' AND " \
+              f"    window_size = 5000 " \
+              f"ORDER BY " \
+              f"    time DESC " \
+              f"LIMIT " \
+              f"    {self.history_len};"
 
-        # Fetch data from postgresql
         data = self.sql_driver.exec(sql)
+        sql_use_time = time.time() - sql_start_time
+        self.logger.debug(f'[TP-Prediction {service_name}:{endpoint_name}] Fetch data use {sql_use_time} seconds.')
+        
         data.sort_values('time', inplace=True)
 
-        # Transform a time series dataset into a supervised learning dataset
-        t0 = time.time()
+        # 1. Transform a time series dataset into 
+        #    a supervised learning dataset
+        fit_start_time = time.time()
+        
         fit_values = data.ac_task_max.values
         fit_values.reshape(len(fit_values), 1)
         fit_series = series_to_supervised(fit_values, self.sample_x_len, self.sample_y_len)
         fit_x, fit_y = fit_series[:, :-self.sample_y_len], fit_series[:, -self.sample_y_len:]
         self.logger.debug(f'sample size: {len(fit_y)}')
 
-        # Fit
+        # 2. Fit
         estimator = MapieTimeSeriesRegressor(
             self.regressor, method="enbpi", cv=self.bootstrap, agg_function=self.agg_function, n_jobs=-1
         )
 
-        estimator = estimator.fit(
-            fit_x, fit_y.reshape(len(fit_y), )
-        )
+        estimator = estimator.fit(fit_x, fit_y.reshape(len(fit_y), ))
         raw_estimator = self.raw_regressor.fit(fit_x, fit_y.reshape(len(fit_y), ))
-        use_time = time.time() - t0
-        self.logger.debug(f'fit done, use {use_time} seconds')
+        
+        fit_use_time = time.time() - fit_start_time
+        self.logger.debug(f'[TP-Prediction {service_name}:{endpoint_name}]Fit done, use {fit_use_time} seconds.')
 
         x = fit_values[len(fit_values) - self.sample_x_len:]
 
+        # 3. Predict
         pred_y_pfit = np.zeros(1)
         pis_y_pfit = np.zeros((1, 2, 1))
 
-        # Predict
         pred_y_pfit[:1], pis_y_pfit[:1, :, :] = estimator.predict(
             x.reshape(1, len(x)), alpha=self.alpha, ensemble=True, optimize_beta=True
         )
@@ -125,12 +121,15 @@ class Estimator(object):
         upper_bound = pis_y_pfit[0][1][0]
         lower_bound = pis_y_pfit[0][0][0]
 
-        self.logger.debug(f'last value: {fit_values[-1]}')
-        self.logger.debug(f'predict value: {predict_value}')
-        self.logger.debug(f'upper bound: {upper_bound}')
-        self.logger.debug(f'lower bound: {lower_bound}')
+        self.logger.debug(f'[TP-Prediction {service_name}:{endpoint_name}] Last value: {fit_values[-1]}.')
+        self.logger.debug(f'[TP-Prediction {service_name}:{endpoint_name}] Predict value: {predict_value}.')
+        self.logger.debug(f'[TP-Prediction {service_name}:{endpoint_name}] Upper bound: {upper_bound}.')
+        self.logger.debug(f'[TP-Prediction {service_name}:{endpoint_name}] Lower bound: {lower_bound}.')
 
-        return predict_value, upper_bound, lower_bound, fit_values[-1], use_time 
+        return predict_value, upper_bound, lower_bound, fit_values[-1], dict(
+            fit_use_time=fit_use_time,
+            sql_use_time=sql_use_time
+        ) 
 
 
 

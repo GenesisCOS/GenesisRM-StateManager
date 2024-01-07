@@ -1,13 +1,14 @@
 import math
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import random 
 from typing import List, Dict, Any
 
 # import grpc
 import numpy as np
 
-from .ts_predictor.estimator import Estimator as SttfEstimator
+from .ts_predictor.estimator_xds import XDSEstimator
 from .data import ServiceEndpointPair
 # from proto import elastic_deployment_pb2 as ed_pb
 # from proto import elastic_deployment_pb2_grpc as ed_grpc
@@ -59,6 +60,9 @@ class Scaler(object):
         if service_name not in self.service_configs:
             raise Exception(f'service: {service_name} not find in config file.')
         return self.service_configs.get(service_name).get('cpu-limit-max')
+    
+    def get_response_time_slo(self, service_name: str, endpoint: str):
+        return self.service_configs.get(service_name).get('response-time-slo').get(endpoint)
     
     def get_cpu_limit_min(self, service_name: str) -> int:
         if service_name not in self.service_configs:
@@ -118,25 +122,13 @@ class Scaler(object):
                 deployment = api.read_namespaced_deployment(
                     name=k8s_name, namespace=self.args.k8s_namespace)
             time.sleep(random.random() * 5)
-            
-    def get_running_replicas(self, service_name: str):
-        with grpc.insecure_channel(self.args.ed_host) as channel:
-            stub = ed_grpc.DeploymentOperationsStub(channel)
-            resp = stub.GetRunningPodReplicas(ed_pb.Deployment(
-                name=service_name,
-                namespace=self.args.k8s_namespace
-            ))
-        return resp.replicas
 
-    def set_running_replicas(self, service_name: str, replicas: int):
-        with grpc.insecure_channel(self.args.ed_host) as channel:
-            stub = ed_grpc.DeploymentOperationsStub(channel)
-            stub.SetRunningPodReplicas(ed_pb.DeploymentReplicasOpsRequest(
-                target_replicas=replicas,
-                target=ed_pb.Deployment(name=service_name, namespace=self.args.k8s_namespace)
-            ))
+    def get_service_endpoints(self, service_name):
+        svc_nodes = self.sg.match_services(self.neo4j_project_name, service_name)
+        ep_nodes = self.sg.match_endpoints(svc_nodes[0])
+        return [i['uri'] for i in ep_nodes]
 
-    def get_downstream(self, service_name, endpoint_name):
+    def get_target(self, service_name, endpoint_name):
         svc_nodes = self.sg.match_services(self.neo4j_project_name, service_name)
         ep_nodes = self.sg.match_endpoints(svc_nodes[0])
         this_ep_node = None
@@ -147,7 +139,7 @@ class Scaler(object):
         if this_ep_node is None:
             raise Exception(f'Endpoint {endpoint_name} do not exist in service {service_name}')
         res = list()
-        downstream_ep_nodes = self.sg.match_downstream_endpoints(this_ep_node)
+        downstream_ep_nodes = self.sg.match_target_endpoints(this_ep_node)
         for node in downstream_ep_nodes:
             svc_nodes = self.sg.match_service_by_endpoint(node)
             res.append(dict(
@@ -155,6 +147,28 @@ class Scaler(object):
                 endpoint_name=node['uri']
             ))
         return res
+    
+    def get_all_services(self):
+        return list(self.service_configs.keys())
+    
+    def get_concurrent_request_count(self, service_name, endpoint_name, window_size, limit):
+        window_size_second = int(window_size / 1000)
+        sql = f"SELECT " \
+              f"    ((span_count / {window_size_second}) * rt_mean / 1000) AS v, " \
+              f"    timestamp AS timestamp, " \
+              f"    time AS time "  \
+              f"FROM " \
+              f"    span_stats " \
+              f"WHERE " \
+              f"    service_name = '{service_name}' " \
+              f"    AND endpoint_name = '{endpoint_name}' " \
+              f"    AND window_size = '{window_size}' "  \
+              f"ORDER BY " \
+              f"    time DESC " \
+              f"LIMIT " \
+              f"    {limit};"
+        data = self.sql_driver.exec(sql)
+        return data.v.values, data.timestamp.values, data.time.values 
 
     def get_service_time(self, service_name, endpoint_name, window_size, limit):
         sql = f"SELECT pt_mean,rt_mean,time  FROM service_time_stats WHERE " \
@@ -188,6 +202,100 @@ class Scaler(object):
         data = self.sql_driver.exec(sql)
 
         return data.rt_mean.values
+    
+    def get_total_throughput(self, service_name, endpoint_name, window_size, limit):
+        window_size_second = window_size / 1000
+        sql = f"SELECT " \
+              f"    (spen_count / {window_size_second}) AS throughput, " \
+              f"    time AS time, " \
+              f"    timestamp AS timestamp " \
+              f"FROM " \
+              f"    span_stats " \
+              f"WHERE " \
+              f"    service_name = '{service_name}' " \
+              f"    AND endpoint_name = '{endpoint_name}' " \
+              f"    AND window_size = '{window_size}' " \
+              f"ORDER BY " \
+              f"    time DESC " \
+              f"LIMIT {limit};"
+        
+        data = self.sql_driver.exec(sql)
+        
+        return (
+            data.throughput.values, 
+            data.timestamp.values, 
+            data.time.values 
+        )
+        
+    def get_response_time(self, service_name, endpoint_name, window_size, limit):
+        # TODO get response time from response_time table !!
+        sql = f"SELECT " \
+              f"    rt_mean AS response_time, "  \
+              f"    timestamp AS timestamp, "  \
+              f"    time AS time " \
+              f"FROM " \
+              f"    span_stats " \
+              f"WHERE " \
+              f"    service_name = '{service_name}' " \
+              f"    AND endpoint_name = '{endpoint_name}' " \
+              f"    AND window_size = '{window_size}' " \
+              f"ORDER BY " \
+              f"    time DESC " \
+              f"LIMIT {limit};"
+        
+        data = self.sql_driver.exec(sql)
+        
+        return (
+            data.response_time.values,
+            data.timestamp.values,
+            data.time.values
+        ) 
+    
+    def get_response_time_ratio(self, service_name, endpoint_name, window_size, limit):
+        sql = f"SELECT " \
+              f"    (rt_mean / pt_mean) AS ratio, "  \
+              f"    timestamp AS timestamp, "  \
+              f"    time AS time " \
+              f"FROM " \
+              f"    span_stats " \
+              f"WHERE " \
+              f"    service_name = '{service_name}' " \
+              f"    AND endpoint_name = '{endpoint_name}' " \
+              f"    AND window_size = '{window_size}' " \
+              f"ORDER BY " \
+              f"    time DESC " \
+              f"LIMIT {limit};"
+        
+        data = self.sql_driver.exec(sql)
+        
+        return (
+            data.ratio.values,
+            data.timestamp.values,
+            data.time.values
+        ) 
+    
+    def get_traffic_intensity(self, service_name, endpoint_name,
+                              dest_service_name, dest_endpoint_name,
+                              window_size, limit):
+        
+        sql = f"SELECT " \
+              f"    (callee_called_count / caller_called_count) AS intensity, " \
+              f"    time AS time, " \
+              f"    timestamp AS timestamp " \
+              f"FROM "  \
+              f"    rpc_stats "  \
+              f"WHERE " \
+              f"    service_name = '{service_name}' " \
+              f"    AND endpoint_name = '{endpoint_name}' " \
+              f"    AND dest_service_name = '{dest_service_name}' "  \
+              f"    AND dest_endpoint_name = '{dest_endpoint_name}' " \
+              f"    AND window_size = '{window_size}' " \
+              f"ORDER BY " \
+              f"    time DESC " \
+              f"LIMIT {limit}"
+              
+        data = self.sql_driver.exec(sql)
+        return data.intensity.values, data.timestamp.values, data.time.values 
 
     def get_ac_task_max_from_src(self, src_svc, src_ep, dst_svc, dst_ep, window_size, limit) -> np.ndarray:
         sql = f"SELECT ac_task_max,time FROM response_time2 WHERE " \
@@ -241,29 +349,28 @@ class Scaler(object):
         return data.request_num.values
 
 
-cache = dict()
-cache_lock = threading.Lock()
+sync_traffic_intensity_threads = set()
+sync_traffic_intensity_threads_lock = threading.Lock()
+traffic_intensity_cache = dict()
+traffic_intensity_cache_lock = threading.Lock()
 
 USE_ENBPI = True 
 
-class MicroKubeScaler(Scaler):
-    def __init__(self, args, logger, root_endpoints: List[ServiceEndpointPair], service_configs: Dict,
-                 sttf_estimator: SttfEstimator | None, lttf_estimator: Any | None):
+class SwiftKubeAutoScaler(Scaler):
+    def __init__(self, args, logger, 
+                 root_endpoints: List[ServiceEndpointPair], 
+                 service_configs: Dict,
+                 estimator: XDSEstimator):
 
         super().__init__(args, logger, service_configs)
-        if sttf_estimator is not None:
-            self.logger.info('use short term time-series estimator')
-        self.sttf_estimator = sttf_estimator
-
-        if lttf_estimator is not None:
-            self.logger.info('use long term time-series estimator')
-        self.lttf_estimator = lttf_estimator
+        assert estimator is not None 
+        self.estimator = estimator
 
         self.root_endpoints = root_endpoints
         self.service_configs = service_configs
 
-        self.l1_sync_period_sec = args.l1_sync_period_sec
-        self.l2_sync_period_sec = args.l2_sync_period_sec
+        self.realtime_controller_sync_period_sec = 5
+        self.predictive_controller_sync_preiod_sec = 60 
 
         self.args = args
         self.logger = logger
@@ -296,57 +403,129 @@ class MicroKubeScaler(Scaler):
         self.stat_lock = threading.Lock()
 
     def start(self):
-        self.logger.info('MicroKube scaler starting ...')
-        l2_start_time = time.time()
-        cur_time = time.time()
+        self.logger.info('SwiftKubeAutoScaler starting ...')
+        
+        predictive_controller_last_time = None 
+        
+        g_predicted_throughput = dict()
+        g_predicted_throughput_lock = threading.Lock()
+        
         while True:
-            start_time = time.time()
-
-            g_res: Dict[str, int] = dict()
-            results: Dict[str, Dict[str, int]] = dict()
-            results_lock = threading.Lock()
-
-            threads = list()
-            total_t0 = time.time()
+            start_time = time.time()            
+            
+            # 0. Check the status of frontend endpoint
+            check_threads = list()
+            status = dict()
+            
+            # 0.0 Start checking threads 
             for pair in self.root_endpoints:
-                if self.sttf_estimator is not None:
-                    t = threading.Thread(target=self.start_l1_scaling,
-                                         args=(pair.service_name, pair.endpoint_name, results, results_lock),
-                                         daemon=True)
-                    threads.append(t)
+                service_name = pair.service_name
+                endpoint_name = pair.endpoint_name
+                
+                t = threading.Thread(target=self.check_frontend_endpoint_status,
+                                     args=(service_name, endpoint_name, status),
+                                     daemon=True)
+                check_threads.append(t)
+                t.start()
+                
+            for thread in check_threads:
+                thread.join()
+            
+            """ extracted_status 
+            {
+                "service_name": {
+                    "endpoint_name": status 
+                }
+            }
+            """
+            extracted_status: Dict[str, Dict[str, Any]] = dict()
+            
+            # 0.1 Extract status 
+            for key in status:
+                splits = str(key).split(':')
+                service_name = splits[0]
+                endpoint_name = splits[1]
+                
+                _status = status[key]
+                if service_name not in extracted_status:
+                    extracted_status[service_name] = dict()
+                assert endpoint_name not in extracted_status[service_name]
+                extracted_status[service_name][endpoint_name] = _status 
+                
+            # TODO If SLO violation occurs, scale-up is required
+            
+            # 1. Check the status of each service
+            checking_result = self.check_services_status()
+            
+            # TODO If there is resource waste, it is necessary to scale-down
+            
+            # 2. Predict frontend endpoints throughput if timeout 
+            current_time = time.time()
+            if predictive_controller_last_time is None or \
+                current_time - predictive_controller_last_time > self.predictive_controller_sync_preiod_sec:
+                    
+                self.predictive_controller_last_time = current_time
+                predicted_throughput = dict()
+                predict_throughput_threads = list()
+                
+                for pair in self.root_endpoints:
+                    t = threading.Thread(target=self.predict_throughput,
+                                         args=(pair.service_name, pair.endpoint_name, predicted_throughput))
+                    predict_throughput_threads.append(t)
                     t.start()
+                
+                for thread in predict_throughput_threads:
+                    thread.join()
+                    
+                g_predicted_throughput_lock.acquire()
+                for key in predicted_throughput:
+                    g_predicted_throughput[key] = predicted_throughput[key]
+                g_predicted_throughput_lock.release()
+            
+            # 3. Estimate throughput of each service 
+            estimated_throughput: Dict[str, Dict[str, int]] = dict()
+            estimated_throughput_lock = threading.Lock()
+            estimate_throughput_threads = list()
+            
+            for pair in self.root_endpoints:
+                service_name = pair.service_name
+                endpoint_name = pair.endpoint_name
+                
+                t = threading.Thread(target=self.estimate_throughput,
+                                     args=(service_name, endpoint_name, 
+                                           g_predicted_throughput[f'{service_name}:{endpoint_name}'], 
+                                           estimated_throughput, estimated_throughput_lock),
+                                     daemon=True)
+                estimate_throughput_threads.append(t)
+                t.start()
 
-                if self.lttf_estimator is not None and (cur_time - l2_start_time) > self.l2_sync_period_sec:
-                    l2_start_time = time.time()
-                    pass
-
-            for thread in threads:
+            for thread in estimate_throughput_threads:
                 thread.join()
 
-            for key in results:
-                res = results.get(key)
+            # 4. Aggregate estimated results 
+            aggregated_estimated_throughput = dict()
+            for key in estimated_throughput:
+                res = estimated_throughput.get(key)
                 for service_name in res:
-                    g_res[service_name] = g_res.get(service_name, 0) + res[service_name]
-            total_t1 = time.time()
-            self.stat_lock.acquire()
-            self.total_time_stat_file.write(str((total_t1 - total_t0) * 1000) + '\n')
-            self.total_time_stat_file.flush()
-            self.stat_lock.release()
+                    aggregated_estimated_throughput[service_name] = \
+                        aggregated_estimated_throughput.get(service_name, 0) + res[service_name]
+                    
             self.logger.info('parallelism needed result:')
-            for service_name in g_res:
+            for service_name in aggregated_estimated_throughput:
                 self.logger.info(f'\t{service_name} need {format(g_res[service_name], ".2f")} parallelism')
 
             self.do_l1_scaling(g_res)
 
             end_time = time.time()
-            cur_time = end_time
-            if end_time - start_time < self.l1_sync_period_sec:
-                time.sleep(self.l1_sync_period_sec - (end_time - start_time))
+
+            if end_time - start_time < self.realtime_controller_sync_period_sec:
+                time.sleep(self.realtime_controller_sync_period_sec - (end_time - start_time))
 
     def do_l1_scaling(self, results: Dict[str, int]):
         for service_name in results:
             max_thread = self.get_service_max_thread(service_name)
             k8s_name = self.get_k8s_name(service_name)
+            
             cur_replicas, deployment = self.get_k8s_deployment_replicas(
                 self.k8s_apps_v1, k8s_name
             )
@@ -374,89 +553,164 @@ class MicroKubeScaler(Scaler):
             self.set_k8s_deployment_replicas(
                 self.k8s_apps_v1, k8s_name, replicas_need, deployment
             )
-
-    def start_l1_scaling(self, service_name: str, endpoint_name: str, results, results_lock):
-        predict_value, upper_bound, _, last_value, use_time = self.sttf_estimator.predict(service_name, endpoint_name)
+            
+    def predict_throughput(self, service_name, endpoint_name, results):
+        
+        predict_value, upper_bound, _, last_value, _ = \
+            self.estimator.predict(service_name, endpoint_name)
 
         key = f'{service_name}:{endpoint_name}'
         # thread_need = max(last_value, self.prev_sttf_upper_bound.get(key, 0))
         if USE_ENBPI:
-            thread_need = max(last_value, upper_bound)
+            throughput = max(last_value, upper_bound)
         else:
-            thread_need = predict_value + 10
+            throughput = predict_value + 10
         # self.prev_sttf_upper_bound[key] = upper_bound
+        results[key] = throughput
 
-        res = dict()
+    def estimate_throughput(self, service_name: str, endpoint_name: str, 
+                            target_throughput, 
+                            results, results_lock):
+        throughputs = dict()
 
-        t0 = time.time()
-        thread_need += L1_OFFSET
-        estm_t0 = time.time()
-        self.cal_parallelism(service_name, endpoint_name, thread_need, res)
-        estm_t1 = time.time()
-        self.logger.debug(f'scaling use {time.time() - t0} seconds calculate concurrency')
+        target_throughput += L1_OFFSET
         
-        self.stat_lock.acquire()
-        self.estm_time_stat_file.write(str((estm_t1 - estm_t0) * 1000) + '\n')
-        self.estm_time_stat_file.flush()
-        self.pred_time_stat_file.write(str(use_time * 1000) + '\n')
-        self.pred_time_stat_file.flush()
-        self.stat_lock.release()
+        estm_t0 = time.time()
+        self.do_estimate_throughput(service_name, endpoint_name, target_throughput, throughputs)
+        estm_t1 = time.time()
+        self.logger.debug(f'SwiftKubeAutoScaler use {estm_t1 - estm_t0} seconds estimate throughput')
 
         results_lock.acquire()
-        key = f'l1-{service_name}:{endpoint_name}'
-        results[key] = res
+        key = f'estimate_throughput-{service_name}:{endpoint_name}'
+        results[key] = throughputs 
         results_lock.release()
         
-    def refresh_weight(self, src_sn, src_en, dst_src, dst_en, cache_key):
-        def do_refresh():
-            cache_lock.acquire()
-            ac_task_max_from_src = self.get_ac_task_max_from_src(
-                src_sn, src_en, dst_src, dst_en, window_size=60000, limit=2)
-            if len(ac_task_max_from_src) == 0:
-                raise Exception('Data not enough.')
-            ac_task_max = self.get_ac_task_max(src_sn, src_en, window_size=60000, limit=2)
-            weight = min(1., float(np.mean(ac_task_max_from_src / ac_task_max)))
-            cache[cache_key] = dict(
-                value=weight,
+    def sync_traffic_intensity(self, src_sn, src_en, dst_sn, dst_en, cache_key):
+        def do_sync():
+            key = f'sync_traffic_intensity-{src_sn}/{src_en}=>{dst_sn}/{dst_en}'
+            sync_traffic_intensity_threads_lock.acquire()
+            if key in sync_traffic_intensity_threads:
+                sync_traffic_intensity_threads_lock.release()
+                return 
+            sync_traffic_intensity_threads.add(key)
+            sync_traffic_intensity_threads_lock.release()
+            
+            traffic_intensity_cache_lock.acquire()
+            traffic_intensity, _, _ = self.get_traffic_intensity(
+                src_sn, src_en, dst_sn, dst_en, window_size=60000, limit=1
+            )
+            
+            if len(traffic_intensity) == 0:
+                print(f"Traffic intensity data from "  \
+                      f"{src_sn}/{src_en} to {dst_sn}/{dst_en} not enough.")
+                traffic_intensity_cache_lock.release()
+                return 
+            
+            traffic_intensity_cache[cache_key] = dict(
+                value=traffic_intensity,
                 last_sync_time=time.time()
             )
-            cache_lock.release()
-        t = threading.Thread(target=do_refresh, daemon=True)
-        t.start()
-
-    def cal_parallelism(self, 
-                        service_name: str, 
-                        endpoint_name: str, 
-                        thread_need, 
-                        res: Dict):
-        res[service_name] = res.get(service_name, 0) + thread_need
-
-        downstream = self.get_downstream(service_name, endpoint_name)
-        for downstream_service in downstream:
-            d_service_name = downstream_service.get('service_name')
-            d_endpoint_name = downstream_service.get('endpoint_name')
-
-            cache_key = f'l1-{service_name}:{endpoint_name}=>{d_service_name}:{d_endpoint_name}'
             
-            cache_lock.acquire()
-            if (cache_key not in cache) or (time.time() - cache.get(cache_key).get('last_sync_time') > 10 * 60):
-                self.refresh_weight(
-                    service_name,
-                    endpoint_name,
-                    d_service_name,
-                    d_endpoint_name,
+            sync_traffic_intensity_threads_lock.acquire()
+            sync_traffic_intensity_threads.remove(key)
+            sync_traffic_intensity_threads_lock.release()
+            
+            traffic_intensity_cache_lock.release()
+        t = threading.Thread(target=do_sync, daemon=True)
+        t.start()
+        
+    def check_frontend_endpoint_status(self, service_name, endpoint_name, status):
+        """
+        Status: 
+        {
+            "slo-violation': True or False (default False)
+        }
+        """
+        key = f'{service_name}:{endpoint_name}'
+        
+        _status = dict()
+        
+        # 1. SLO violation check  
+        response_time, _, _ = self.get_response_time(service_name, endpoint_name, 5000, 10)
+        slo = self.get_response_time_slo(service_name, endpoint_name)
+        if response_time[0] > slo:
+            _status['slo-violation'] = True 
+        status[key] = _status 
+        
+    def check_services_status(self):
+        services = self.get_all_services()
+        pool = ThreadPoolExecutor(max_workers=len(services))
+        futures = dict()
+        results = dict()
+        for service_name in services:
+            future = pool.submit(self.check_service_status, service_name)
+            futures[service_name] = future
+            
+        for service_name in futures:
+            results[service_name] = futures[service_name].result()
+        
+        return results 
+    
+    def check_service_status(self, service_name):
+        """
+        Status:
+        {
+            "overallocation": True of False,
+            "parallelism": int,
+            "concurrency": float 
+        }
+        """
+        max_thread = self.get_service_max_thread(service_name)
+        replicas = self.get_k8s_deployment_replicas(self.k8s_apps_v1,
+                                                    self.get_k8s_name(service_name))
+        
+        endpoints = self.get_service_endpoints(service_name)
+        total_concurrency = 0
+        for endpoint in endpoints:
+            value, _, _ = self.get_concurrent_request_count(service_name, endpoint, 5000, 10)
+            concurrency = np.mean(value)
+            total_concurrency += concurrency 
+            
+        parallelism = replicas * max_thread
+        
+        return dict(
+            overallocation=(total_concurrency < parallelism),
+            parallelism=parallelism,
+            concurrency=total_concurrency
+        )
+        
+
+    def do_estimate_throughput(self, 
+                              service_name: str, 
+                              endpoint_name: str, 
+                              throughput, 
+                              throughputs: Dict):
+        throughputs[service_name] = throughputs.get(service_name, 0) + throughput
+
+        targets = self.get_target(service_name, endpoint_name)
+        for tgt_service in targets:
+            tgt_service_name = tgt_service.get('service_name')
+            tgt_endpoint_name = tgt_service.get('endpoint_name')
+
+            cache_key = f'traffic_intensity-{service_name}:{endpoint_name}=>{tgt_service_name}:{tgt_endpoint_name}'
+            
+            traffic_intensity_cache_lock.acquire()
+            if (cache_key not in traffic_intensity_cache) or \
+                (time.time() - traffic_intensity_cache.get(cache_key).get('last_sync_time') > 5 * 60):
+                self.sync_traffic_intensity(
+                    service_name, endpoint_name,
+                    tgt_service_name, tgt_endpoint_name,
                     cache_key
                 )
-            if cache_key in cache:
-                weight = cache.get(cache_key).get('value')
+            if cache_key in traffic_intensity_cache:
+                weight = traffic_intensity_cache.get(cache_key).get('value')
             else:
-                cache_lock.release()
+                traffic_intensity_cache_lock.release()
                 continue
-            cache_lock.release()
-            _thread_need = thread_need * weight
+            traffic_intensity_cache_lock.release()
+            tgt_throughput = throughput * weight
 
-            self.logger.debug(cache_key, f'weight: {cache.get(cache_key).get("value")}')
-            self.cal_parallelism(d_service_name, d_endpoint_name, _thread_need, res)
+            self.do_estimate_throughput(tgt_service_name, tgt_endpoint_name, tgt_throughput, throughputs)
 
 
 COUNT = 1
