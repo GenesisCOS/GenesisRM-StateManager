@@ -1,0 +1,13 @@
+
+host: http://10.10.30.3:9090
+#start_time: 1704724303
+
+# 2024-1-19 15.55.00 | 2024-1-19 19.08.00
+start_time: 1707197520
+end_time: 1707208920
+
+aggregate:
+  dir: eclog@swiftkube-s-l1.v1
+  out: eclog@swiftkube-s-l1.v1-aggregated
+  exp: swiftkube   # autothrottle hpa ahpa swiftkube default
+

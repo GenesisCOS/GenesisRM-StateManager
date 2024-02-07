@@ -1,0 +1,14 @@
+Count,Message,Traceback,Nodes
+1,Expecting value: line 1 column 1 (char 0),"  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 343, in run
+    self.execute_next_task()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 376, in execute_next_task
+    self.execute_task(self._task_queue.pop(0))
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 497, in execute_task
+    task(self.user)
+  File ""/opt/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 648, in test_task
+    ticket = self.search_travel_plan(
+  File ""/opt/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 258, in search_travel_plan
+    resp_json_dict = resp.json()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/requests/models.py"", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+",pclhost-27-3_53c962fd419445b8835dc665d8f5ea65

@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+POST,/api/v1/travelplanservice/travelPlan/cheapest,"""HTTPError('504 Server Error: Gateway Time-out for url: /api/v1/travelplanservice/travelPlan/cheapest')""",56
+GET,/api/v1/foodservice/foods/2024-02-06/Shang%20Hai/Su%20Zhou/D1345,"""HTTPError('504 Server Error: Gateway Time-out for url: /api/v1/foodservice/foods/2024-02-06/Shang%20Hai/Su%20Zhou/D1345')""",4

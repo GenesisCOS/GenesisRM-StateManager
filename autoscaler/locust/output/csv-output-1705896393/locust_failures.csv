@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+GET,/api/v1/foodservice/foods/2024-01-23/Shang%20Hai/Su%20Zhou/D1345,"""HTTPError('502 Server Error: Bad Gateway for url: /api/v1/foodservice/foods/2024-01-23/Shang%20Hai/Su%20Zhou/D1345')""",73
