@@ -5,6 +5,7 @@ autoscaler/ts_predictor/__pycache__
 servicegraph/__pycache__
 
 outputs 
+**@**
 
 autoscaler/logs/**
 

@@ -307,8 +307,7 @@ base:
     host: http://10.10.30.3:9090
 
   locust:
-    #workload: fluctuating # fluctuating const 
-    workload: fluctuating
+    workload: noisy
     workers: 40
     url: http://10.10.30.4:9000
 
@@ -341,10 +340,7 @@ ts_predictor:
 
 
 scaler:
-  # enabled_scaler: ahpa_scaler 
   enabled_scaler: swiftkube_scaler 
-  #enabled_scaler: none 
-  #enabled_scaler: k8s_vpa_scaler
 
   none: {}  
 
@@ -401,7 +397,8 @@ scaler:
 
   swiftkube_scaler: 
     min_cpu_limit: "10m"
-    strategy: 'rt-l1'  # rt rt-l1 rt-l1-l2 rt-l2
+    #strategy: 'rt'  # rt rt-l1 rt-l1-l2 rt-l2
+    strategy: "S-L1"
 
     kafka:
       topic: flink-span-stats

@@ -1,6 +1,7 @@
 import sys 
 import os
 import re 
+import threading 
 
 import pandas as pd 
 import hydra
@@ -42,11 +43,11 @@ def main(cfg: DictConfig):
     exp = cfg.aggregate.exp 
     
     os.mkdir(output_dir)
-     
+    
     for metric_dir in os.listdir(data_dir):
         if os.path.isdir(os.path.join(data_dir, metric_dir)):
             metric_name = metric_dir
-            print(metric_name)
+            print('Loading metric ', metric_name)
             metrics = dict()
             # load csv 
             idx = 0
@@ -60,11 +61,16 @@ def main(cfg: DictConfig):
                     service = match_obj[0]
                     if service not in metrics:
                         metrics[service] = list()
+                    print(f'Loading csv {file_path}')
                     _data = pd.read_csv(file_path)
                     _data.rename(columns={'value': f'value-{idx}'}, inplace=True)
                     _data.set_index('timestamps', inplace=True)
                     
-                    # Fix HPA value 
+                    print('Fixing values.')
+                    if (exp == 'ahpa' or exp == 'swiftkube') and metric_name == 'memory_allocated':
+                        for i in range(len(_data[f'value-{idx}'].values)):
+                            _data[f'value-{idx}'].values[i] = min(3221225472.0, _data[f'value-{idx}'].values[i])
+                    
                     if exp == 'hpa' and metric_name == 'cpu_limit':
                         fix_value = hpa_fix[service]
                         for i in range(len(_data[f'value-{idx}'].values)):
@@ -72,6 +78,7 @@ def main(cfg: DictConfig):
                     
                     metrics[service].append(_data)
                 idx += 1
+            
             # aggregate
             os.mkdir(os.path.join(output_dir, metric_name))
             _data_all = None 
@@ -88,11 +95,10 @@ def main(cfg: DictConfig):
                     else:
                         _data_all = pd.merge(_data_all, df, how='outer', on='timestamps').fillna(0)
                 _data.sum(axis=1).to_csv(os.path.join(output_dir, metric_name, service + '.csv'))
+                print('Writing csv ', os.path.join(output_dir, metric_name, service + '.csv'))
             if _data_all is not None:
-                _data_all.sum(axis=1).to_csv(os.path.join(output_dir, metric_name, 'all.csv'))
-                    
-                    
-                    
+                _data_all.sum(axis=1).to_csv(os.path.join(output_dir, metric_name, 'all.csv'))  
+                print('Writing csv ', os.path.join(output_dir, metric_name, 'all.csv'))         
 
 
 if __name__ == '__main__':

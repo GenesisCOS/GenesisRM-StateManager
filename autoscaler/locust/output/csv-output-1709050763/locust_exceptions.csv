@@ -1,0 +1,27 @@
+Count,Message,Traceback,Nodes
+4,Expecting value: line 1 column 1 (char 0),"  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 343, in run
+    self.execute_next_task()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 376, in execute_next_task
+    self.execute_task(self._task_queue.pop(0))
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 497, in execute_task
+    task(self.user)
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 669, in test_task
+    _ = self.query_train_foods(
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 385, in query_train_foods
+    resp_json_dict = resp.json()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/requests/models.py"", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+","pclhost-27-3_574bc37f964944b38490ba4a632961bf, pclhost-27-3_8f5beb2c07cd4aa9b2b28481a57d7ed2, pclhost-27-3_1fe8c7684ea24ffbb3cf39b0815ff3e6, pclhost-27-3_bdc374cf2f8942fc9aae66f671d5c192"
+19,Expecting value: line 1 column 1 (char 0),"  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 343, in run
+    self.execute_next_task()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 376, in execute_next_task
+    self.execute_task(self._task_queue.pop(0))
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 497, in execute_task
+    task(self.user)
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 662, in test_task
+    ticket = self.search_travel_plan(
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 272, in search_travel_plan
+    resp_json_dict = resp.json()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/requests/models.py"", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+","pclhost-27-3_8b4866c0f4a24ab599d1eb272acb02cd, pclhost-27-3_fe135281a6da45d6b2921c107cf9ca3a, pclhost-27-3_89784e6c200d4d61ba8bdb6e55d86580, pclhost-27-3_858ddc6e637e48dfa34161ab83e15af1, pclhost-27-3_30953fd8c4a1410eba9a3a4a0b1498de, pclhost-27-3_225d97210a5c4733a4e4268b41c845a3, pclhost-27-3_770f9123aa2d470d9046063f2d07c54f, pclhost-27-3_8d6152d3ecbe4f459b6eff5c327708c0, pclhost-27-3_6fcdce9ba024410392e98d2b40e6ff6a, pclhost-27-3_96a0c77242754d6eaf933c0c9ea64895, pclhost-27-3_028dab3e159b4e0dad834f952c0b8630, pclhost-27-3_c8449130aa894c94b9772352142746ee, pclhost-27-3_20fde0712a9b4dee8d1a93ddfc026cad, pclhost-27-3_574bc37f964944b38490ba4a632961bf, pclhost-27-3_1fe8c7684ea24ffbb3cf39b0815ff3e6, pclhost-27-3_384d257ab4b44cdfa679e098baf09241"

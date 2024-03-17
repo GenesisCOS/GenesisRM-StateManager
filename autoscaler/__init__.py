@@ -602,11 +602,8 @@ class Scaler(ServiceConfig, DBUtil, ServiceGraphUtil, PrometheusUtil):
                 self.__logger.error(e)
             #time.sleep(random.random() * 5)
             
-    def patch_k8s_pod(self,
-                      pod_name: str,
-                      namespace: str,
-                      body: str,
-                      async_req=False):
+    def patch_k8s_pod(self, pod_name: str, namespace: str,
+                      body: str, async_req=False):
         
         return self.k8s_core_v1.patch_namespaced_pod(
             pod_name, namespace, 
@@ -614,9 +611,7 @@ class Scaler(ServiceConfig, DBUtil, ServiceGraphUtil, PrometheusUtil):
             async_req=async_req
         )
 
-    def get_k8s_deployment_replicas(self, 
-                                    dep_name: str, 
-                                    namespace: str):
+    def get_k8s_deployment_replicas(self, dep_name: str, namespace: str):
         return self.get_k8s_deployment(dep_name, namespace).spec.replicas 
 
     def set_k8s_deployment_replicas(self, 

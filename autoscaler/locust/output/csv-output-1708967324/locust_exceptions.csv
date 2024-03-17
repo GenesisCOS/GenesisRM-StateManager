@@ -1,0 +1,53 @@
+Count,Message,Traceback,Nodes
+5520,Expecting value: line 1 column 1 (char 0),"  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 343, in run
+    self.execute_next_task()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 376, in execute_next_task
+    self.execute_task(self._task_queue.pop(0))
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 497, in execute_task
+    task(self.user)
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 662, in test_task
+    ticket = self.search_travel_plan(
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 272, in search_travel_plan
+    resp_json_dict = resp.json()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/requests/models.py"", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+","pclhost-27-3_7f5c93f3533f44cdb3865f9e16381b2c, pclhost-27-3_30c1ba64e7dd434fa68c1ac274ebd1c7, pclhost-27-3_fc9f6cfd29c548aa885ec9d475cbfcbf, pclhost-27-3_1ffbc3c649a0417d87b76dc3d924cf06, pclhost-27-3_a5c7d2260dd54543ae13d8af063f2ca2, pclhost-27-3_321ba3757289429fb0b8f59c6cc9f705, pclhost-27-3_427eb69e8aa64a769d1991440c5c39a3, pclhost-27-3_ee64a94ea42c4aafa99ffa0f32a63a1d, pclhost-27-3_c9ea9c78c41e47c8a923abf0bfb37d95, pclhost-27-3_65587809456c455595cbc0cf47577eb0, pclhost-27-3_f012384729374869a9837b524e40b792, pclhost-27-3_057ad3d8a596462d96cbb21bb5c27e5b, pclhost-27-3_6406635fb4f4407f853a8cf06c120a7f, pclhost-27-3_569a2aa9458e413eacbb8a41881d7651, pclhost-27-3_497bd6a9c3e940918e1a5d8c7df44a4c, pclhost-27-3_614178f7bba04919ae06791b1eb2e79d, pclhost-27-3_99970d4370fb45a0ae78ed93e8ce7659, pclhost-27-3_02513fdc51b94521ac467d9b1dbadd69, pclhost-27-3_736181763ee4458e8153b636c2b50ade, pclhost-27-3_44a169d6c4324afdaf876ffbd89924b8, pclhost-27-3_ccd341cfbb244116a7a54a0598241753, pclhost-27-3_3b3e83c4bd0e4cc8823517613c0640f9, pclhost-27-3_45916b6a66044136b30b5fda9b7fb110, pclhost-27-3_a04e275c0782462f831a1ff48cddd995, pclhost-27-3_6a0614d36b04499493e301f48cda2231, pclhost-27-3_ce574057507644ce94bd393d7e38f996, pclhost-27-3_39d8b4d3949347dea35e5f5bb24493c4, pclhost-27-3_2e33bf60213a417a8ad20b8fdf3e4915, pclhost-27-3_0389589f839a4de4a3ad5dcfcaf1d832, pclhost-27-3_ad689432015e49c589c031981bba8acb, pclhost-27-3_630fbe6881034f9e9caf9f601956684b, pclhost-27-3_115ea13738bc49858a7ccce131b23287, pclhost-27-3_2bf03d66c6df4f5683349c60eb6bfd2a, pclhost-27-3_a6cdbd4a6e7948df94670d644d8da6d8, pclhost-27-3_20fd9ee4580e4e5590f80b9636bca219, pclhost-27-3_ccfcd014000d495297e0e17551ce5d9b, pclhost-27-3_d5d53b5c2cf049e599852c6da166e71f, pclhost-27-3_f3330d096f6d437abb5ff1470ab0ae1e, pclhost-27-3_16f1d79e68b7462cb3c0f86018e050e2, pclhost-27-3_366b1eee5f9d494daf5977b0ed8d4538"
+1308,Expecting value: line 1 column 1 (char 0),"  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 343, in run
+    self.execute_next_task()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 376, in execute_next_task
+    self.execute_task(self._task_queue.pop(0))
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 497, in execute_task
+    task(self.user)
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 669, in test_task
+    _ = self.query_train_foods(
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 385, in query_train_foods
+    resp_json_dict = resp.json()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/requests/models.py"", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+","pclhost-27-3_7f5c93f3533f44cdb3865f9e16381b2c, pclhost-27-3_30c1ba64e7dd434fa68c1ac274ebd1c7, pclhost-27-3_fc9f6cfd29c548aa885ec9d475cbfcbf, pclhost-27-3_1ffbc3c649a0417d87b76dc3d924cf06, pclhost-27-3_a5c7d2260dd54543ae13d8af063f2ca2, pclhost-27-3_321ba3757289429fb0b8f59c6cc9f705, pclhost-27-3_427eb69e8aa64a769d1991440c5c39a3, pclhost-27-3_ee64a94ea42c4aafa99ffa0f32a63a1d, pclhost-27-3_c9ea9c78c41e47c8a923abf0bfb37d95, pclhost-27-3_65587809456c455595cbc0cf47577eb0, pclhost-27-3_f012384729374869a9837b524e40b792, pclhost-27-3_057ad3d8a596462d96cbb21bb5c27e5b, pclhost-27-3_6406635fb4f4407f853a8cf06c120a7f, pclhost-27-3_497bd6a9c3e940918e1a5d8c7df44a4c, pclhost-27-3_614178f7bba04919ae06791b1eb2e79d, pclhost-27-3_569a2aa9458e413eacbb8a41881d7651, pclhost-27-3_99970d4370fb45a0ae78ed93e8ce7659, pclhost-27-3_44a169d6c4324afdaf876ffbd89924b8, pclhost-27-3_736181763ee4458e8153b636c2b50ade, pclhost-27-3_02513fdc51b94521ac467d9b1dbadd69, pclhost-27-3_ccd341cfbb244116a7a54a0598241753, pclhost-27-3_3b3e83c4bd0e4cc8823517613c0640f9, pclhost-27-3_45916b6a66044136b30b5fda9b7fb110, pclhost-27-3_a04e275c0782462f831a1ff48cddd995, pclhost-27-3_6a0614d36b04499493e301f48cda2231, pclhost-27-3_ce574057507644ce94bd393d7e38f996, pclhost-27-3_39d8b4d3949347dea35e5f5bb24493c4, pclhost-27-3_2e33bf60213a417a8ad20b8fdf3e4915, pclhost-27-3_0389589f839a4de4a3ad5dcfcaf1d832, pclhost-27-3_ad689432015e49c589c031981bba8acb, pclhost-27-3_630fbe6881034f9e9caf9f601956684b, pclhost-27-3_115ea13738bc49858a7ccce131b23287, pclhost-27-3_2bf03d66c6df4f5683349c60eb6bfd2a, pclhost-27-3_a6cdbd4a6e7948df94670d644d8da6d8, pclhost-27-3_20fd9ee4580e4e5590f80b9636bca219, pclhost-27-3_d5d53b5c2cf049e599852c6da166e71f, pclhost-27-3_ccfcd014000d495297e0e17551ce5d9b, pclhost-27-3_f3330d096f6d437abb5ff1470ab0ae1e, pclhost-27-3_16f1d79e68b7462cb3c0f86018e050e2, pclhost-27-3_366b1eee5f9d494daf5977b0ed8d4538"
+14,Expecting value: line 1 column 1 (char 0),"  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 343, in run
+    self.execute_next_task()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 376, in execute_next_task
+    self.execute_task(self._task_queue.pop(0))
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 497, in execute_task
+    task(self.user)
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 650, in test_task
+    self.sync_info()
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 213, in sync_info
+    resp_json_dict = resp.json()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/requests/models.py"", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+","pclhost-27-3_736181763ee4458e8153b636c2b50ade, pclhost-27-3_ee64a94ea42c4aafa99ffa0f32a63a1d, pclhost-27-3_7f5c93f3533f44cdb3865f9e16381b2c, pclhost-27-3_0389589f839a4de4a3ad5dcfcaf1d832, pclhost-27-3_ad689432015e49c589c031981bba8acb, pclhost-27-3_057ad3d8a596462d96cbb21bb5c27e5b, pclhost-27-3_30c1ba64e7dd434fa68c1ac274ebd1c7, pclhost-27-3_fc9f6cfd29c548aa885ec9d475cbfcbf, pclhost-27-3_614178f7bba04919ae06791b1eb2e79d, pclhost-27-3_569a2aa9458e413eacbb8a41881d7651, pclhost-27-3_6a0614d36b04499493e301f48cda2231, pclhost-27-3_ccfcd014000d495297e0e17551ce5d9b, pclhost-27-3_a5c7d2260dd54543ae13d8af063f2ca2, pclhost-27-3_2e33bf60213a417a8ad20b8fdf3e4915"
+40,Expecting value: line 1 column 1 (char 0),"  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 343, in run
+    self.execute_next_task()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 376, in execute_next_task
+    self.execute_task(self._task_queue.pop(0))
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/locust/user/task.py"", line 497, in execute_task
+    task(self.user)
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 650, in test_task
+    self.sync_info()
+  File ""/home/projects/microkube-python-v2/autoscaler/locust/train_ticket/locustfile.py"", line 197, in sync_info
+    resp_json_dict = resp.json()
+  File ""/opt/anaconda3/envs/swiftkube/lib/python3.10/site-packages/requests/models.py"", line 975, in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+","pclhost-27-3_7f5c93f3533f44cdb3865f9e16381b2c, pclhost-27-3_30c1ba64e7dd434fa68c1ac274ebd1c7, pclhost-27-3_a5c7d2260dd54543ae13d8af063f2ca2, pclhost-27-3_427eb69e8aa64a769d1991440c5c39a3, pclhost-27-3_c9ea9c78c41e47c8a923abf0bfb37d95, pclhost-27-3_65587809456c455595cbc0cf47577eb0, pclhost-27-3_057ad3d8a596462d96cbb21bb5c27e5b, pclhost-27-3_6406635fb4f4407f853a8cf06c120a7f, pclhost-27-3_614178f7bba04919ae06791b1eb2e79d, pclhost-27-3_497bd6a9c3e940918e1a5d8c7df44a4c, pclhost-27-3_569a2aa9458e413eacbb8a41881d7651, pclhost-27-3_99970d4370fb45a0ae78ed93e8ce7659, pclhost-27-3_44a169d6c4324afdaf876ffbd89924b8, pclhost-27-3_736181763ee4458e8153b636c2b50ade, pclhost-27-3_45916b6a66044136b30b5fda9b7fb110, pclhost-27-3_6a0614d36b04499493e301f48cda2231, pclhost-27-3_ce574057507644ce94bd393d7e38f996, pclhost-27-3_39d8b4d3949347dea35e5f5bb24493c4, pclhost-27-3_2e33bf60213a417a8ad20b8fdf3e4915, pclhost-27-3_ad689432015e49c589c031981bba8acb, pclhost-27-3_630fbe6881034f9e9caf9f601956684b, pclhost-27-3_115ea13738bc49858a7ccce131b23287, pclhost-27-3_2bf03d66c6df4f5683349c60eb6bfd2a, pclhost-27-3_20fd9ee4580e4e5590f80b9636bca219, pclhost-27-3_d5d53b5c2cf049e599852c6da166e71f, pclhost-27-3_366b1eee5f9d494daf5977b0ed8d4538"

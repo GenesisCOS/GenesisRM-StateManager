@@ -48,8 +48,13 @@ def gen_noisy():
                 count = 0
             else:
                 count += 1
-    
+
+def gen_const_1000():
+    with open('const_1000.txt', 'w+') as file:
+        for _ in range(1 * 60 * 60):
+            file.write(f'{1000}\n')
+            file.flush()
 
 if __name__ == '__main__':
-    gen_bursty()
+    gen_const_1000()
 

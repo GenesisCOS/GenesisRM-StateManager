@@ -49,12 +49,28 @@ def with_locust(temp_dir, locustfile, url, workers, dataset):
     time.sleep(1)
     return master_p, worker_ps
 
+banner = '''
+
+
+   ______                     _      ____  __  ___
+  / ____/__  ____  ___  _____(_)____/ __ \/  |/  /
+ / / __/ _ \/ __ \/ _ \/ ___/ / ___/ /_/ / /|_/ / 
+/ /_/ /  __/ / / /  __(__  ) (__  ) _, _/ /  / /  
+\____/\___/_/ /_/\___/____/_/____/_/ |_/_/  /_/   
+                                                 
+                                           -- v1.0.0
+                                           
+                                           
+'''
+
 @hydra.main(version_base=None, config_path='../config', config_name='config')
 def main(cfg: DictConfig) -> None:
     
     logger = logging.getLogger('Main')
     enabled_service_config = cfg.enabled_service_config
     logger.info(f'enabled service config = {enabled_service_config}')
+    
+    logger.info(banner)
     
     scaler = None 
     
@@ -63,10 +79,6 @@ def main(cfg: DictConfig) -> None:
         if cfg.scaler.enabled_scaler == 'swiftkube_scaler':
             from .swiftkube_scaler import SwiftKubeScaler
             scaler = SwiftKubeScaler(cfg, logger.getChild('SwiftKubeScaler'))
-            
-        elif cfg.scaler.enabled_scaler == 'cb_scaler':
-            from .cb_scaler import ContextualBanditScaler
-            scaler = ContextualBanditScaler(cfg, logger.getChild('ContextualBanditScaler'))
             
         elif cfg.scaler.enabled_scaler == 'nw_scaler':
             from .nw_scaler import NWScaler
@@ -80,13 +92,10 @@ def main(cfg: DictConfig) -> None:
             from .mem_scaler import MemScaler 
             scaler = MemScaler(cfg, logger.getChild('MemScaler'))
         
-        elif cfg.scaler.enabled_scaler == 'k8s_vpa_scaler':
-            from .k8s_vpa_scaler import K8sVPAScaler
-            scaler = K8sVPAScaler(cfg, logger.getChild('K8sVPAScaler'))
-        
         else:
             raise Exception(f'unsupported autoscaler {cfg.scaler.enabled_scaler}')
-        
+    
+    # Pre start 
     if scaler is not None:
         scaler.pre_start()
     

@@ -31,7 +31,7 @@ def with_locust(data_dir, locustfile, url):
     ]
     master_p = subprocess.Popen(
         args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, 
-        stderr=subprocess.DEVNULL,
+        #stderr=subprocess.DEVNULL,
         env=env
     )
 
@@ -111,10 +111,19 @@ class Service(object):
         return self.__name + '-dep'
     
     @property
+    def name(self):
+        return self.__name 
+    
+    @property
     def container_id(self):
         for container in self.__pod.status.container_statuses:
             if container.name == self.container_name:
                 return container.container_id.split('//')[1]
+            
+    def get_memory_stat(self):
+        mem_cgroup_path = f'/sys/fs/cgroup/memory/kubepods.slice/kubepods-{self.pod_qos}.slice/kubepods-{self.pod_qos}-pod{self.pod_uid}.slice/cri-containerd-{self.container_id}.scope'
+        memory_stats = mem_cgroup_path + '/memory.stat'
+        return read_memory_stat(memory_stats)
             
     def set_memory_high(self, value):
         print(f'set service {self.__name} memory.high to {value}')
@@ -150,16 +159,54 @@ class MemScaler(Scaler):
                 service,
                 self.list_pods_of_dep(f'{service}-dep', 'train-ticket', None).items[0]))
         
-        mem_high_value = 0 * 1024 * 1024
         with_swap_rt_p99 = list()
         with_swap_rt_avg = list()
         without_swap_rt_p99 = list()
         without_swap_rt_avg = list()
+        with_swap = True
         for _ in range(20):
-            for with_swap in [True, False]:
+            for mem_high_value in [
+                0 * 1024 * 1024,
+                10 * 1024 * 1024,
+                20 * 1024 * 1024,
+                30 * 1024 * 1024,
+                40 * 1024 * 1024,
+                50 * 1024 * 1024,
+                60 * 1024 * 1024,
+                70 * 1024 * 1024,
+                80 * 1024 * 1024,
+                90 * 1024 * 1024,
+                100 * 1024 * 1024,
+                110 * 1024 * 1024,
+                120 * 1024 * 1024,
+                130 * 1024 * 1024,
+                140 * 1024 * 1024,
+                150 * 1024 * 1024,
+                160 * 1024 * 1024,
+                170 * 1024 * 1024,
+                180 * 1024 * 1024,
+                190 * 1024 * 1024,
+                200 * 1024 * 1024,
+                300 * 1024 * 1024,
+                400 * 1024 * 1024,
+                500 * 1024 * 1024,
+                1024 * 1024 * 1024,
+                2048 * 1024 * 1024
+            ]:
                 __start_time = time.time()
                 self.__logger.info(f'with swap = {with_swap}')
                 os.mkdir(SCALER_DATA/'runtime'/f'data-{__start_time}')
+                
+                self.__logger.info(f'set memory.high to max')
+                for service in services:
+                    service.set_memory_high('max')
+                
+                p = with_locust(f'runtime/data-{__start_time}', self.__locustfile, self.__locust_url) 
+                with p:
+                    while True:
+                        if p.poll() is not None:
+                            break 
+                        time.sleep(1)
                 
                 self.__logger.info(f'set memory.high to {mem_high_value}')
                 for service in services:
@@ -169,34 +216,40 @@ class MemScaler(Scaler):
                 self.__logger.info(f'wait for {wait_seconds} seconds.')
                 time.sleep(wait_seconds)
                 
-                """
-                nr_in_out = 0
-                nr_swap = 0
-                nr_pgfault = 0
-                prev_pgpgin, prev_pgpgout = None, None 
-                prev_swap = None 
-                prev_pgfault = None 
-                for _ in range(1):
-                    mem_stat = read_memory_stat(memory_stat)
-                    pgpgin = mem_stat.pgpgin 
-                    pgpgout = mem_stat.pgpgout
-                    pgfault = mem_stat.pgfault
-                    swap = mem_stat.swap  
-                    
-                    if prev_pgpgin is not None:
-                        nr_in_out += abs(pgpgin - prev_pgpgin)
-                    prev_pgpgin = pgpgin  
-                    if prev_pgpgout is not None:
-                        nr_in_out += abs(pgpgout - prev_pgpgout)
-                    prev_pgpgout = pgpgout 
-                    if prev_swap is not None:
-                        nr_swap += abs(swap - prev_swap)
-                    prev_swap = swap 
-                    if prev_pgfault is not None:
-                        nr_pgfault += abs(pgfault - prev_pgfault)
-                    prev_pgfault = pgfault 
-                    time.sleep(1)
-                """
+                mem_stat_cache = dict()
+                for service in services:
+                    mem_stat_cache[service.name] = dict(
+                        prev_pgpgin=None,
+                        prev_pgpgout=None,
+                        nr_in_out=0,
+                        pgpgin_per_second=0,
+                        pgpgout_per_second=0
+                    )
+                with open(f'result-{int(mem_high_value / 1024 / 1024)}.json', 'w+') as result_file:
+                    for _ in range(60 * 30):
+                        for service in services:
+                            mem_stat = service.get_memory_stat()
+                            pgpgin = mem_stat.pgpgin 
+                            pgpgout = mem_stat.pgpgout 
+                            
+                            if mem_stat_cache[service.name]['prev_pgpgin'] is not None:
+                                mem_stat_cache[service.name]['nr_in_out'] += \
+                                    abs(pgpgin - mem_stat_cache[service.name]['prev_pgpgin'])
+                                mem_stat_cache[service.name]['pgpgin_per_second'] = \
+                                    abs(pgpgin - mem_stat_cache[service.name]['prev_pgpgin'])
+                            mem_stat_cache[service.name]['prev_pgpgin'] = pgpgin  
+                            if mem_stat_cache[service.name]['prev_pgpgout'] is not None:
+                                mem_stat_cache[service.name]['nr_in_out'] += \
+                                    abs(pgpgout - mem_stat_cache[service.name]['prev_pgpgout'])
+                                mem_stat_cache[service.name]['pgpgout_per_second'] = \
+                                    abs(pgpgout - mem_stat_cache[service.name]['prev_pgpgout'])
+                            mem_stat_cache[service.name]['prev_pgpgout'] = pgpgout 
+                        print(mem_stat_cache)
+                        result = json.dumps(mem_stat_cache)
+                        result_file.write(result + '\n')
+                        result_file.flush()
+                        time.sleep(1)
+                
                 
                 self.__logger.info(f'set memory.high to max')
                 for service in services:
@@ -206,7 +259,8 @@ class MemScaler(Scaler):
                     self.__logger.info('turn swap off and on.')
                     os.system('swapoff -a')
                     os.system('swapon /home/swapfile')
-                    
+                
+                """ 
                 p = with_locust(f'runtime/data-{__start_time}', self.__locustfile, self.__locust_url) 
                 
                 with p:
@@ -221,6 +275,7 @@ class MemScaler(Scaler):
                         record = json.loads(line)
                         if record['name'] == '/api/v1/travelplanservice/travelPlan/cheapest':
                             rt.append(record['latency'])
+                
                 rt = np.array(rt)
                 avg = np.mean(rt)
                 p99 = np.percentile(rt, 99)
@@ -235,11 +290,12 @@ class MemScaler(Scaler):
                     without_swap_rt_p99.append(p99)
                     print(f'without swap rt p99 = {p99}')
                     print(f'without swap rt avg = {avg}')
-                
+                """
+        """
         print('-------- RESULT ---------')
         print(f'with swap rt p99    = {np.mean(with_swap_rt_p99)}')
         print(f'with swap rt avg    = {np.mean(with_swap_rt_avg)}')
         print(f'without swap rt p99 = {np.mean(without_swap_rt_p99)}')
         print(f'without swap rt avg = {np.mean(without_swap_rt_avg)}')
-                
+        """
                     
