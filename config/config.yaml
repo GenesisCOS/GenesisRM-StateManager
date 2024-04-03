@@ -307,7 +307,7 @@ base:
     host: http://10.10.30.3:9090
 
   locust:
-    workload: noisy
+    workload: nasa 
     workers: 40
     url: http://10.10.30.4:9000
 
@@ -331,7 +331,7 @@ ts_predictor:
     history_len: 180
     sample_x_len: 30
     sample_y_len: 5
-    alpha: 0.05
+    alpha: 0.01
     db:
       table_name: span_stats 
       
@@ -398,7 +398,7 @@ scaler:
   swiftkube_scaler: 
     min_cpu_limit: "10m"
     #strategy: 'rt'  # rt rt-l1 rt-l1-l2 rt-l2
-    strategy: "S-L1"
+    strategy: "SGS-L2"
 
     kafka:
       topic: flink-span-stats

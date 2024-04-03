@@ -25,16 +25,16 @@ def main(cfg: DictConfig):
     _end = min(_start + 1000, cfg.end_time)
     
     jobs = [
-        dict(name='cpu_usage', query='rate(swiftmonitor_cpu_usage{namespace=\"train-ticket\"}[10s])/1000000000'),
-        dict(name='memory_stat_usage', query='swiftmonitor_memory_stat_usage_in_bytes{namespace=\"train-ticket\"}'),
-        dict(name='memory_stat_swap_usage', query='swiftmonitor_memory_stat_swap_in_bytes{namespace=\"train-ticket\"}'),
-        dict(name='memory_stat_cache_usage', query='swiftmonitor_memory_stat_cache_in_bytes{namespace=\"train-ticket\"}'),
-        dict(name='memory_stat_rss_usage', query='swiftmonitor_memory_stat_rss_in_bytes{namespace=\"train-ticket\"}'),
-        dict(name='pod_cpu_limit', query='swiftmonitor_pod_cpu_limit{namespace=\"train-ticket\"}'),
-        dict(name='cpu_limit', query='swiftmonitor_cpu_limit{namespace=\"train-ticket\"}'),
-        dict(name='memory_limit', query='swiftmonitor_memory_limit_in_bytes{namespace=\"train-ticket\"}'),
-        dict(name='cpu_allocated', query='swiftmonitor_k8s_pod_cpu_allocated{namespace=\"train-ticket\"}'),
-        dict(name='memory_allocated', query='swiftmonitor_k8s_pod_memory_allocated{namespace=\"train-ticket\"}')
+        dict(name='cpu_usage', query='rate(swiftmonitor_cgroup_cpuacct_usage{namespace=\"train-ticket\"}[10s])/1000000000'),
+        dict(name='memory_stat_usage', query='swiftmonitor_cgroup_memory_stat_usage_in_bytes{namespace=\"train-ticket\"}'),
+        dict(name='memory_stat_swap_usage', query='swiftmonitor_cgroup_memory_stat_swap_in_bytes{namespace=\"train-ticket\"}'),
+        dict(name='memory_stat_cache_usage', query='swiftmonitor_cgroup_memory_stat_cache_in_bytes{namespace=\"train-ticket\"}'),
+        dict(name='memory_stat_rss_usage', query='swiftmonitor_cgroup_memory_stat_rss_in_bytes{namespace=\"train-ticket\"}'),
+        dict(name='pod_cpu_limit', query='swiftmonitor_cgroup_pod_cpu_quota{namespace=\"train-ticket\"}'),
+        dict(name='cpu_limit', query='swiftmonitor_cgroup_cpu_quota{namespace=\"train-ticket\"}'),
+        dict(name='memory_limit', query='swiftmonitor_pod_memory_limit{namespace=\"train-ticket\"}'),
+        dict(name='cpu_allocated', query='swiftmonitor_pod_cpu_allocated{namespace=\"train-ticket\"}'),
+        dict(name='memory_allocated', query='swiftmonitor_pod_memory_allocated{namespace=\"train-ticket\"}')
     ]
 
     for job in jobs:

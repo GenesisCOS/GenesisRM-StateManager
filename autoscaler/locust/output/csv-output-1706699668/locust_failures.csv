@@ -1,2 +1,0 @@
-Method,Name,Error,Occurrences
-POST,/api/v1/travelplanservice/travelPlan/cheapest,"""HTTPError('502 Server Error: Bad Gateway for url: /api/v1/travelplanservice/travelPlan/cheapest')""",287

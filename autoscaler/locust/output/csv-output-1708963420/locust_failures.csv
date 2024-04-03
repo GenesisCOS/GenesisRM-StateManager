@@ -1,7 +1,0 @@
-Method,Name,Error,Occurrences
-GET,/api/v1/foodservice/foods/2024-02-28/Shang%20Hai/Su%20Zhou/D1345,"""HTTPError('403 Client Error: Forbidden for url: /api/v1/foodservice/foods/2024-02-28/Shang%20Hai/Su%20Zhou/D1345')""",7
-GET,/api/v1/foodservice/foods/2024-02-28/Shang%20Hai/Su%20Zhou/D1345,"""HTTPError('502 Server Error: Bad Gateway for url: /api/v1/foodservice/foods/2024-02-28/Shang%20Hai/Su%20Zhou/D1345')""",67
-POST,/api/v1/travelplanservice/travelPlan/cheapest,"""HTTPError('403 Client Error: Forbidden for url: /api/v1/travelplanservice/travelPlan/cheapest')""",167
-GET,/api/v1/trainservice/trains,"""HTTPError('502 Server Error: Bad Gateway for url: /api/v1/trainservice/trains')""",4
-POST,/api/v1/travelplanservice/travelPlan/cheapest,"""HTTPError('502 Server Error: Bad Gateway for url: /api/v1/travelplanservice/travelPlan/cheapest')""",250
-GET,/api/v1/stationservice/stations,"""HTTPError('502 Server Error: Bad Gateway for url: /api/v1/stationservice/stations')""",1

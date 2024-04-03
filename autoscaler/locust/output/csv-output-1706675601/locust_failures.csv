@@ -1,5 +1,0 @@
-Method,Name,Error,Occurrences
-GET,/api/v1/trainservice/trains,"""HTTPError('504 Server Error: Gateway Time-out for url: /api/v1/trainservice/trains')""",1
-POST,/api/v1/travelplanservice/travelPlan/cheapest,"""HTTPError('504 Server Error: Gateway Time-out for url: /api/v1/travelplanservice/travelPlan/cheapest')""",50
-POST,/api/v1/travelplanservice/travelPlan/cheapest,"""HTTPError('403 Client Error: Forbidden for url: /api/v1/travelplanservice/travelPlan/cheapest')""",6
-GET,/api/v1/foodservice/foods/2024-01-32/Shang%20Hai/Su%20Zhou/D1345,"""HTTPError('504 Server Error: Gateway Time-out for url: /api/v1/foodservice/foods/2024-01-32/Shang%20Hai/Su%20Zhou/D1345')""",4

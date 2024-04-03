@@ -1,2 +1,0 @@
-Method,Name,Error,Occurrences
-GET,/api/v1/stationservice/stations,"""HTTPError('502 Server Error: Bad Gateway for url: /api/v1/stationservice/stations')""",79

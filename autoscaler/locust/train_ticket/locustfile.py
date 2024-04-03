@@ -5,6 +5,13 @@ import os
 import json 
 from pathlib import Path
 
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor
+)
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from requests import utils as requests_utils
 from locust import HttpUser, LoadTestShape, task, between, events
 from locust.log import setup_logging
@@ -54,6 +61,28 @@ PLUS = 25
 ADD = 5
 OFFSET = 210
 
+""" Init opentelemetry """
+
+resource = Resource(attributes={
+    "service.name": "locust",
+    "service.version": "0.0.1"
+})
+
+provider = TracerProvider(resource=resource)
+processor = BatchSpanProcessor(OTLPSpanExporter(
+    endpoint="http://127.0.0.1:4317", 
+    insecure=True
+))
+provider.add_span_processor(processor)
+
+# Sets the global default tracer provider
+trace.set_tracer_provider(provider)
+
+# Creates a tracer from the global tracer provider
+tracer = trace.get_tracer("my.tracer.name")
+
+""" Init opentelemetry end """
+
 class QuickStartUser(HttpUser):
     host = HOST 
     wait_time = between(WAIT_MIN, WAIT_MAX)
@@ -102,6 +131,8 @@ class QuickStartUser(HttpUser):
         
     @events.request.add_listener
     def on_request(response_time, context, name, **kwargs):
+        global tracer 
+        
         request_log_file.write(json.dumps({
             'time': time.perf_counter(),
             'latency': response_time / 1e3,
@@ -262,12 +293,14 @@ class QuickStartUser(HttpUser):
             "start_time_ms": time.time() * 1000,
         }
 
-        resp = self.client.post(
-            QuickStartUser.TRAVEL_PLAN_SERVICE_URL + "/travelPlan/%s" % (target,),
-            json=data,
-            headers=headers,
-            context=context
-        )
+        url = QuickStartUser.TRAVEL_PLAN_SERVICE_URL + "/travelPlan/%s" % (target,)
+        with tracer.start_as_current_span(f"locust@travel-plan-service@{url}") as span:
+            resp = self.client.post(
+                url=url,
+                json=data,
+                headers=headers,
+                context=context
+            )
 
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1:

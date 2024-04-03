@@ -1,2 +1,0 @@
-Method,Name,Error,Occurrences
-POST,/api/v1/travelplanservice/travelPlan/cheapest,"""HTTPError('403 Client Error: Forbidden for url: /api/v1/travelplanservice/travelPlan/cheapest')""",2

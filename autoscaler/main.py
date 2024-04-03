@@ -10,13 +10,29 @@ import pathlib
 import hydra 
 from omegaconf import DictConfig
 
-def with_locust(temp_dir, locustfile, url, workers, dataset):
+ROOT_PATH = os.path.split(os.path.realpath(__file__))[0]
+
+def with_locust(temp_dir, locustfile, url, workers, dataset, logger):
     
     env = copy.deepcopy(os.environ)
+    
+    # Run opentelemetry collector 
+    logger.info('Start Opentelemetry Collector ...')
+    args = [
+        'otelcol',
+        f'--config={ROOT_PATH}/../config/otelcol/config.yaml'
+    ]
+    otelcol_p = subprocess.Popen(
+        args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env
+    )
     
     env['DATASET'] = dataset 
     env['HOST'] = url
 
+    # Run locust workers 
+    logger.info('Start Locust workers ...')
     args = [
         'locust',
         '--worker',
@@ -30,6 +46,8 @@ def with_locust(temp_dir, locustfile, url, workers, dataset):
             env=env 
         ))
 
+    # Run locust master
+    logger.info('Start Locust master ...')
     args = [
         'locust',
         '--master',
@@ -47,10 +65,9 @@ def with_locust(temp_dir, locustfile, url, workers, dataset):
     )
 
     time.sleep(1)
-    return master_p, worker_ps
+    return master_p, worker_ps, otelcol_p
 
 banner = '''
-
 
    ______                     _      ____  __  ___
   / ____/__  ____  ___  _____(_)____/ __ \/  |/  /
@@ -59,8 +76,7 @@ banner = '''
 \____/\___/_/ /_/\___/____/_/____/_/ |_/_/  /_/   
                                                  
                                            -- v1.0.0
-                                           
-                                           
+                                    
 '''
 
 @hydra.main(version_base=None, config_path='../config', config_name='config')
@@ -77,19 +93,19 @@ def main(cfg: DictConfig) -> None:
     if cfg.scaler.enabled_scaler != 'none':
         # Run scaler 
         if cfg.scaler.enabled_scaler == 'swiftkube_scaler':
-            from .swiftkube_scaler import SwiftKubeScaler
+            from .statecontroller.SwiftRM import SwiftKubeScaler
             scaler = SwiftKubeScaler(cfg, logger.getChild('SwiftKubeScaler'))
             
         elif cfg.scaler.enabled_scaler == 'nw_scaler':
-            from .nw_scaler import NWScaler
+            from .statecontroller.nw_scaler import NWScaler
             scaler = NWScaler(cfg, logger.getChild('NWScaler'))
             
         elif cfg.scaler.enabled_scaler == 'ahpa_scaler':
-            from .ahpa_scaler import AHPAScaler
+            from .statecontroller.ahpa_scaler import AHPAScaler
             scaler = AHPAScaler(cfg, logger.getChild('AHPAScaler')) 
         
         elif cfg.scaler.enabled_scaler == 'mem_scaler':
-            from .mem_scaler import MemScaler 
+            from .statecontroller.mem_scaler import MemScaler 
             scaler = MemScaler(cfg, logger.getChild('MemScaler'))
         
         else:
@@ -109,7 +125,8 @@ def main(cfg: DictConfig) -> None:
     locust_run = False 
     if 'locust_enabled' not in cfg.scaler[cfg.scaler.enabled_scaler] or \
             cfg.scaler[cfg.scaler.enabled_scaler]['locust_enabled']:
-        master_p, worker_ps = with_locust(temp_dir, locustfile, url, workers, dataset)
+        master_p, worker_ps, otelcol_p = with_locust(
+            temp_dir, locustfile, url, workers, dataset, logger)
         locust_run = True 
     else:
         logger.info('Locust will not run ...')
@@ -137,6 +154,8 @@ def main(cfg: DictConfig) -> None:
     if locust_run:
         for p in worker_ps:
             p.wait()
+        otelcol_p.kill()
+        otelcol_p.wait()
 
 
 if __name__ == '__main__':

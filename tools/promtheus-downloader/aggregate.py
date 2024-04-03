@@ -70,6 +70,10 @@ def main(cfg: DictConfig):
                     if (exp == 'ahpa' or exp == 'swiftkube') and metric_name == 'memory_allocated':
                         for i in range(len(_data[f'value-{idx}'].values)):
                             _data[f'value-{idx}'].values[i] = min(3221225472.0, _data[f'value-{idx}'].values[i])
+                            
+                    if (exp == 'ahpa' or exp == 'swiftkube') and metric_name == 'memory_limit':
+                        for i in range(len(_data[f'value-{idx}'].values)):
+                            _data[f'value-{idx}'].values[i] = min(3221225472.0, _data[f'value-{idx}'].values[i])                    
                     
                     if exp == 'hpa' and metric_name == 'cpu_limit':
                         fix_value = hpa_fix[service]

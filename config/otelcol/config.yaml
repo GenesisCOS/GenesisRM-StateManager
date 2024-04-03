@@ -1,0 +1,22 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "127.0.0.1:4317"
+exporters:
+  kafka/flink:
+    brokers:
+      - 10.10.30.3:9092
+      - 10.10.30.93:9092
+      - 10.10.30.95:9092
+      - 10.10.30.96:9092 
+      - 10.10.30.98:9092
+      - 10.10.30.99:9092
+    topic: 'trainticket.opentelemetry.trace.spans'
+    encoding: 'otlp_proto'
+    protocol_version: 2.0.0
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [kafka/flink]
