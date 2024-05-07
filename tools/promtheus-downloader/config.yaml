@@ -1,11 +1,11 @@
 
 host: http://10.10.30.3:9090
 
-start_time: 1712025480
-end_time: 1712102460
+start_time: 1714232760
+end_time: 1714247160
 
 aggregate:
-  dir: nasa@genesisrm-sgs-l2.v2
-  out: nasa@genesisrm-sgs-l2.v2-aggregated
-  exp: swiftkube   # autothrottle hpa ahpa swiftkube default
+  dir: nasa@hpa-4h
+  out: nasa@hpa-4h-aggregated
+  exp: hpa   # autothrottle hpa ahpa swiftkube default
 

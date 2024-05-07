@@ -239,7 +239,7 @@ class SwiftKubeScaler(Scaler):
         self.__lt_logger = self.__logger.getChild('LongTermPred')
         
         if self.__cfg.base.locust.workload == 'nasa':
-            data_path = 'autoscaler/data/swiftkube_data/lt_result_nasa.pkl'
+            data_path = self.__cfg.scaler.swiftkube_scaler.nasa_lt_result
             if os.path.exists(data_path): 
                 self.__lt_logger.info('already trained.')
                 with open(data_path, 'rb') as data_file:
