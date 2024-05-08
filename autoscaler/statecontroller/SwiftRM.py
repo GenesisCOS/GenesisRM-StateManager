@@ -848,10 +848,7 @@ class SwiftKubeScaler(Scaler):
             for _, predictor in endpoints.items():
                 predictor.refit()
     
-    def __st_predict_concurrency(self, service_name, endpoint_name, fit=False):
-        assert service_name is not None
-        assert endpoint_name is not None 
-        
+    def __st_predict_concurrency(self, service_name, endpoint_name):
         result = dict(
             service_name=service_name,
             endpoint_name=endpoint_name
@@ -862,7 +859,7 @@ class SwiftKubeScaler(Scaler):
         
         return result 
             
-    def st_predict_concurrency(self, fit=False):
+    def st_predict_concurrency(self):
         ret_futures = list()
         results = list()
         
@@ -893,37 +890,34 @@ class SwiftKubeScaler(Scaler):
         
         return retval['value'].values 
     
-    def set_pod_to_running(self, service_name: str, pod_dict: Dict):
+    def set_pod_state_to_rr(self, service_name: str, pod_dict: Dict):
         __logger = self.__logger.getChild('Operation')
         __logger.addHandler(self.__operation_logfile)
         
-        while True:
-            try:
-                pod = self.patch_k8s_pod(
-                    pod_dict["metadata"]["name"], pod_dict["metadata"]["namespace"],
-                    body=dict(
-                        metadata=dict(
-                            labels={
-                                GENESIS_IO_STATE_LABEL: GENESIS_IO_POD_STATE_RR,
-                                GENESIS_IO_ENDPOINT_LABEL: GENESIS_IO_ENDPOINT_UP
-                            },
-                            annotations={'controller.kubernetes.io/pod-deletion-cost': "10000"}
-                        ),
-                        spec=dict(
-                            containers=copy.deepcopy(self.get_resources_config_from_cfg(service_name))
-                        )
+        try:
+            pod = self.patch_k8s_pod(
+                pod_dict["metadata"]["name"], pod_dict["metadata"]["namespace"],
+                body=dict(
+                    metadata=dict(
+                        labels={
+                            GENESIS_IO_STATE_LABEL: GENESIS_IO_POD_STATE_RR,
+                            GENESIS_IO_ENDPOINT_LABEL: GENESIS_IO_ENDPOINT_UP
+                        },
+                        annotations={'controller.kubernetes.io/pod-deletion-cost': "10000"}
+                    ),
+                    spec=dict(
+                        containers=copy.deepcopy(self.get_resources_config_from_cfg(service_name))
                     )
                 )
-                break 
-            except ApiException as e:
-                if e.status == 404:
-                    __logger.error(
-                        f'pod (name={pod_dict["metadata"]["name"]} '
-                        f'namespace={pod_dict["metadata"]["namespace"]}) '
-                        'not found'
-                    )
-                    break 
-                time.sleep(0.5)
+            ) 
+        except ApiException as e:
+            if e.status == 404:
+                __logger.error(
+                    f'pod (name={pod_dict["metadata"]["name"]} '
+                    f'namespace={pod_dict["metadata"]["namespace"]}) '
+                    'not found'
+                ) 
+            time.sleep(0.5)
                 
         __logger.info(
             f'set pod (name={pod.metadata.name} '
@@ -931,7 +925,7 @@ class SwiftKubeScaler(Scaler):
             'to Ready-Running stats.'
         )
     
-    def set_pod_to_l1s(self, service_name, pod: Dict):
+    def set_pod_state_to_rcn(self, service_name, pod: Dict):
         __l = self.__logger.getChild('Operation')
         __l.addHandler(self.__operation_logfile)
         
@@ -939,7 +933,7 @@ class SwiftKubeScaler(Scaler):
         for config in resources_config:
             if 'limits' in config['resources']:
                 if 'cpu' in config['resources']['limits']:
-                    config['resources']['limits']['cpu'] = '3000m' # TODO 
+                    config['resources']['limits']['cpu'] = '3000m'
             if 'requests' in config['resources']:
                 if 'cpu' in config['resources']['requests']:
                     config['resources']['requests']['cpu'] = '10m' 
@@ -966,7 +960,7 @@ class SwiftKubeScaler(Scaler):
             __l.debug(f'set pod to L1Suspended stats failed.')
         __l.info(f'set pod (name={pod.metadata.name} namespace={pod.metadata.namespace}) to L1Suspended stats.')
     
-    def set_pod_to_l2s(self, service_name, pod: Dict):
+    def set_pod_state_to_rln(self, service_name, pod: Dict):
         __l = self.__logger.getChild('Operation')
         __l.addHandler(self.__operation_logfile)
         
@@ -991,7 +985,9 @@ class SwiftKubeScaler(Scaler):
                             GENESIS_IO_STATE_LABEL: GENESIS_IO_POD_STATE_RLN,
                             GENESIS_IO_ENDPOINT_LABEL: GENESIS_IO_ENDPOINT_DOWN
                         },
-                        annotations={'controller.kubernetes.io/pod-deletion-cost': "0"}
+                        annotations={
+                            'controller.kubernetes.io/pod-deletion-cost': "0"
+                        }
                     ),
                     spec=dict(containers=resources_config)
                 )
@@ -1000,8 +996,7 @@ class SwiftKubeScaler(Scaler):
             __l.debug(f'set pod to L2Suspended stats failed.')
         __l.info(f'set pod (name={pod.metadata.name} namespace={pod.metadata.namespace}) to L2Suspended stats.')
         
-    def choose_pod_to_l2s(self,
-                          pods: List[V1Pod],
+    def choose_pod_to_l2s(self, pods: List[V1Pod],
                           delta: int) -> List[V1Pod]:
         ret_pods = list()
         if len(pods) == 0:
@@ -1115,7 +1110,7 @@ class SwiftKubeScaler(Scaler):
                 )
 
                 for pod in pods_to_run:
-                    future = executor.submit(self.set_pod_to_running, service, pod)
+                    future = executor.submit(self.set_pod_state_to_rr, service, pod)
                     ret_futures.append(future)
                     
                 running_pods += pods_to_run 
@@ -1126,7 +1121,7 @@ class SwiftKubeScaler(Scaler):
                 pods_to_l1_sleep = self.choose_pod_to_l1s(running_pods, delta) 
                 
                 for pod in pods_to_l1_sleep:
-                    future = executor.submit(self.set_pod_to_l1s, service, pod)
+                    future = executor.submit(self.set_pod_state_to_rcn, service, pod)
                     ret_futures.append(future)
                     
                 l1s_pods += pods_to_l1_sleep 
@@ -1137,7 +1132,7 @@ class SwiftKubeScaler(Scaler):
                 pods_to_l1_sleep = self.choose_pod_to_l1s(l2s_pods, delta)
                 
                 for pod in pods_to_l1_sleep:
-                    future = executor.submit(self.set_pod_to_l1s, service, pod)
+                    future = executor.submit(self.set_pod_state_to_rcn, service, pod)
                     ret_futures.append(future)
                 
                 l1s_pods += pods_to_l1_sleep 
@@ -1148,7 +1143,7 @@ class SwiftKubeScaler(Scaler):
                 pods_to_l2_sleep = self.choose_pod_to_l2s(l1s_pods, delta)
                 
                 for pod in pods_to_l2_sleep:
-                    future = executor.submit(self.set_pod_to_l2s, service, pod)
+                    future = executor.submit(self.set_pod_state_to_rln, service, pod)
                     ret_futures.append(future)
                 
                 l2s_pods += pods_to_l2_sleep 
@@ -1158,7 +1153,7 @@ class SwiftKubeScaler(Scaler):
             if warm == 0 and len(initializing_pods) > 0 and time.time() - self.prev_warmup_ts > 15:
                 warmup = True 
                 pod = initializing_pods.pop(0)
-                future = executor.submit(self.set_pod_to_running, service, pod)
+                future = executor.submit(self.set_pod_state_to_rr, service, pod)
                 ret_futures.append(future)
                 
                 running_pods += [pod] 
@@ -1183,89 +1178,3 @@ class SwiftKubeScaler(Scaler):
             future.result()
         
         __l.info(f'use {time.time() - __sync_start} seconds.')
-    
-    """
-    def __do_sync_running_replicas(self, service, replicas):
-        running_replicas = replicas 
-        
-        dep_name = self.get_k8s_dep_name_from_cfg(service)
-        namespace = self.get_k8s_namespace_from_cfg()
-        
-        dep_obj = self.get_k8s_deployment(dep_name, namespace)
-        
-        match_labels = list()
-        for k, v in dep_obj.spec.selector.match_labels.items():
-            match_labels.append((k, v)) 
-        resp = swift_list_pods_of_dep(namespace, match_labels[0][0], match_labels[0][1])
-        if resp['status'] != 'success':
-            raise Exception(resp.reason)
-        
-        pods = resp['pods'] 
-        
-        new_pods = list()
-        for pod in pods:
-            if pod['status']['phase'] == 'Running':
-                new_pods.append(pod)
-        pods = new_pods 
-        
-        running_pods, s1_pods, s2_pods = list(), list(), list()
-        for pod in pods:
-            labels = pod['metadata']['labels']
-            if GENESIS_IO_STATE_LABEL not in labels:
-                raise Exception(
-                    f'Pod(name={pod["metadata"]["name"]} '
-                    f'namespace={pod["metadata"]["namespace"]}) '
-                    f'do not has {GENESIS_IO_STATE_LABEL} label.'
-                )
-            # Running pod 
-            elif labels[GENESIS_IO_STATE_LABEL] == GENESIS_IO_POD_STATE_RR:
-                running_pods.append(pod)
-            # Sleeping (Level1) pod 
-            elif labels[GENESIS_IO_STATE_LABEL] == GENESIS_IO_POD_STATE_RCN:
-                s1_pods.append(pod)
-            # Sleeping (Level2) pod 
-            elif labels[GENESIS_IO_STATE_LABEL] == GENESIS_IO_POD_STATE_RLN:
-                s2_pods.append(pod)
-            else:
-                raise Exception(f'Unknown label {GENESIS_IO_STATE_LABEL}={labels[GENESIS_IO_STATE_LABEL]}.')
-        
-        ret_futures = list()
-        with futures.ThreadPoolExecutor(max_workers=200) as executor:
-            # Need more running pods 
-            if len(running_pods) < running_replicas:
-                delta_to_run = running_replicas - len(running_pods)
-                pods_to_run = self.choose_pod_to_running(s1_pods, s2_pods, delta_to_run)
-
-                for pod in pods_to_run:
-                    future = executor.submit(self.set_pod_to_running, service, pod)
-                    ret_futures.append(future)
-                    
-                running_pods += pods_to_run 
-            
-            # Need less running pods 
-            elif len(running_pods) > running_replicas:
-                delta = len(running_pods) - running_replicas
-                pods_to_l1_sleep = self.choose_pod_to_l1s(running_pods, delta) 
-                
-                for pod in pods_to_l1_sleep:
-                    future = executor.submit(self.set_pod_to_l1s, service, pod)
-                    ret_futures.append(future)
-                    
-                s1_pods += pods_to_l1_sleep 
-         
-    
-    def sync_running_replicas(self, config: Dict):
-        __l = self.__logger.getChild('RunningSync')
-        __l.debug('Running ...')
-        
-        __sync_start = time.time()      
-        ret_futures = list()
-        with futures.ThreadPoolExecutor() as executor:
-            for service, replicas in config.items():
-                ret_futures.append(executor.submit(self.__do_sync_running_replicas, service, replicas))
-        
-        for future in as_completed(ret_futures):
-            future.result()
-        
-        __l.debug(f'use {time.time() - __sync_start} seconds.')  
-    """
