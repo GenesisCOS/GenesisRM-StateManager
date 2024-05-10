@@ -1,8 +1,4 @@
-autoscaler/sttf/__pycache__
-autoscaler/lttf/__pycache__
-autoscaler/__pycache__
-autoscaler/ts_predictor/__pycache__
-servicegraph/__pycache__
+__pycache__
 
 output 
 outputs 

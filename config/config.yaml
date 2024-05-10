@@ -340,8 +340,8 @@ ts_predictor:
 
 
 scaler:
-  #enabled_scaler: swiftkube_scaler 
-  enabled_scaler: none
+  enabled_scaler: swiftkube_scaler 
+  #enabled_scaler: none
   
   none: {}  
 
@@ -404,7 +404,7 @@ scaler:
     nasa_lt_result: 'autoscaler/data/swiftkube_data/lt_result_nasa_mul.pkl'
     kafka:
       topic: flink-span-stats
-      bootstrap_servers: "10.10.30.3:9092,10.10.30.93:9092,10.10.30.95:9092,10.10.30.96:9092,10.10.30.98:9092,10.10.30.99:9092"
+      bootstrap_servers: "10.10.30.3:9092,10.10.30.98:9092"
   
   k8s_vpa_scaler: {}
 
