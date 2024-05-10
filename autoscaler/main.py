@@ -93,7 +93,7 @@ def main(cfg: DictConfig) -> None:
     if cfg.scaler.enabled_scaler != 'none':
         # Run scaler 
         if cfg.scaler.enabled_scaler == 'swiftkube_scaler':
-            from .statecontroller.SwiftRM import SwiftKubeScaler
+            from .statecontroller.swift_scaler import SwiftKubeScaler
             scaler = SwiftKubeScaler(cfg, logger.getChild('SwiftKubeScaler'))
             
         elif cfg.scaler.enabled_scaler == 'nw_scaler':
