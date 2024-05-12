@@ -5,6 +5,22 @@ import random
 WARMUP_LEN = 180
 WORKLOAD_LEN = 3600
 
+def scale_nasa():
+    data = list()
+    with open('nasa_1day_60min.txt', 'r') as file:
+        for line in file.readlines():
+            if line == '\n':
+                continue
+            data.append(int(line.strip('\n')))
+    result = list()
+    for i in data:
+        for _ in range(6):
+            result.append(i)
+    with open('nasa_1day_6hour.txt', 'w+') as file:
+        for i in result:
+            file.write(f'{int(i)}\n')
+            file.flush()
+
 def gen_bursty():
     data = list()
     with open('bursty.txt', 'r') as file:
@@ -56,5 +72,5 @@ def gen_const_1000():
             file.flush()
 
 if __name__ == '__main__':
-    gen_const_1000()
+    scale_nasa()
 

@@ -43,7 +43,6 @@ if WAIT_TIME is not None:
 HOST = os.getenv('TARGET_HOST')
 DATASET = os.getenv('DATASET')
 
-
 CLUSTER = 'production'
 
 if DATASET is not None:
@@ -108,22 +107,7 @@ class QuickStartUser(HttpUser):
         self.user_id = dict()
         self.user_token = dict()
         self.synced = False 
-
-        '''
-        {
-            "train_id": string,
-            "train_ave_speed": int
-        }
-        '''
         self.trains = list()
-        
-        '''
-        {
-            "station_id": string,
-            "station_name": string,
-            "station_stay_time": int
-        }
-        '''
         self.stations = list()
         self.start_station = None
         self.end_station = None
@@ -304,21 +288,6 @@ class QuickStartUser(HttpUser):
 
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1:
-            '''
-            [{
-                "tripId": "G1234",
-                "trainTypeId": "GaoTieOne",
-                "fromStationName": "Nan Jing",
-                "toStationName": "Shang Hai",
-                "stopStations": ["Nan Jing","Zhen Jiang","Wu Xi","Su Zhou","Shang Hai"],
-                "priceForSecondClassSeat": "95.0",
-                "numberOfRestTicketSecondClass": 1073741823",
-                "priceForFirstClassSeat": "250.0",
-                "numberOfRestTicketFirstClass": 1073741823,
-                "startingTime": "2013-05-04T01:00:00.000+0000",
-                "endTime": "2013-05-04T02:00:00.000+0000"
-            }, ... ]
-            '''
             return resp_json_dict["data"]
         else:
             return None
@@ -417,70 +386,6 @@ class QuickStartUser(HttpUser):
                                context=context, headers=headers)
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1:
-            """
-            {
-                "data": {
-                    "trainFoodList": [
-                        {
-                            "id": "1b0a36c4-9f51-4925-a6b1-8d58a55902eb",
-                            "tripId": "G1234",
-                            "foodList": [
-                                {
-                                    "foodName": "Pork Chop with rice",
-                                    "price": 9.5
-                                },
-                                {
-                                    "foodName": "Egg Soup",
-                                    "price": 3.2
-                                }
-                            ]
-                        } ...
-                    ],
-                    "foodStoreListMap": {
-                        "nanjing": [
-                            {
-                                "id": "59c3ba12-4fc5-473b-a55d-36fcbd2c0e0d",
-                                "stationId": "nanjing",
-                                "storeName": "Burger King",
-                                "telephone": "88348215681",
-                                "businessTime": "08:00-23:00",
-                                "deliveryFee": 15,
-                                "foodList": [
-                                    {
-                                        "foodName": "Big Burger",
-                                        "price": 1.2
-                                    },
-                                    {
-                                        "foodName": "Bone Soup",
-                                        "price": 2.5
-                                    }
-                                ]
-                            } ...
-                        ],
-                        "suzhou": [
-                            {
-                                "id": "293c684b-68d9-4837-b6ce-e53f6c3ddc77",
-                                "stationId": "suzhou",
-                                "storeName": "Roman Holiday",
-                                "telephone": "3769464",
-                                "businessTime": "09:00-23:00",
-                                "deliveryFee": 15,
-                                "foodList": [
-                                    {
-                                        "foodName": "Big Burger",
-                                        "price": 1.2
-                                    },
-                                    {
-                                        "foodName": "Bone Soup",
-                                        "price": 2.5
-                                    }
-                                ]
-                            } ...
-                        ] ...
-                    }
-                }
-            }
-            """
             return resp_json_dict["data"]
         else:
             return None
@@ -502,15 +407,6 @@ class QuickStartUser(HttpUser):
                                headers=headers)
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1:
-            """
-            [
-                {
-                    "index": 1,
-                    "name": "Traffic Accident Assurance",
-                    "price": 3.0
-                }, ...
-            ]
-            """
             return resp_json_dict["data"]
         else:
             return None
@@ -532,18 +428,6 @@ class QuickStartUser(HttpUser):
                                headers=headers)
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1:
-            """
-            [
-                {
-                    "id": "7737a4cc-2597-47e6-ab16-6c59f09823f5",
-                    "accountId": "4d2a46c7-71cb-4cf1-b5bb-b68406d9da6f",
-                    "name": "Contacts_One",
-                    "documentType": 1,  // ID Card
-                    "documentNumber": "DocumentNumber_One",
-                    "phoneNumber": "ContactsPhoneNum_One"
-                }, ...
-            ]
-            """
             return resp_json_dict["data"]
         else:
             return None
@@ -567,35 +451,6 @@ class QuickStartUser(HttpUser):
                  consignee_name: str,
                  consignee_phone: str,
                  consignee_weight: float):
-
-        """
-        不需要食物的 food type 为 0
-        train food 的 food type 为 1
-        station food 的 food type 为 2
-
-        开启 enable_consignee 后
-        handle_date consignee_name consignee_phone consignee_weight 必需填充
-
-        :param username:
-        :param handle_date:
-        :param enable_consignee:
-        :param consignee_weight:
-        :param consignee_phone:
-        :param consignee_name:
-        :param food_store_name:
-        :param food_station_name:
-        :param food_price:
-        :param food_name:
-        :param food_type:
-        :param contacts_id:
-        :param trip_id:
-        :param seat_type:
-        :param date:
-        :param from_station_name:
-        :param to_station_name:
-        :param assurance:
-        :return:
-        """
 
         context = {
             "user_uuid": self.user_uuid,

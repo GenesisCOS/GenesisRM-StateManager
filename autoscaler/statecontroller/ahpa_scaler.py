@@ -49,39 +49,42 @@ class AHPAScaler(Scaler):
         
         self.ctrl_freq = min(self.scale_in_freq, self.scale_out_freq)
         self.max_time_sclice = abs(self.scale_in_freq - self.scale_out_freq)
+        
+        self.with_lt_pred = cfg.scaler.ahpa_scaler.with_lt_pred
 
     def pre_start(self):
         self.__logger.info('AHPA Scaler without RobustSTL preStart ...')
         
-        # if os.path.exists(self.lt_pred_results_path):
-        #     with open(self.lt_pred_results_path, 'rb') as file:        
-        #         self.lt_pred_results = pickle.load(file)                 
-        
-        # else:
-        #     ret_futures = list()
-        #     results = list()
-                    
-        #     directory = "/opt/projects/microkube-python-v2/tools/promtheus-downloader/default-data-aggregated-1705215956/cpu_usage"
-        #     t0 = time.time()
-        #     with futures.ThreadPoolExecutor() as executor:
-        #         for service in self.get_all_services_from_cfg():
-        #             service_rsplit = service.rsplit('-',1)[0]
-        #             path = directory + "/" + service_rsplit + ".csv"
-        #             service_history_data = pd.read_csv(path).iloc[:,1].to_numpy().flatten()
-        #             long_term_pred = LongTermPred(self.__cfg, self.__logger, service_history_data)
-        #             future = executor.submit(long_term_pred.predict, service)
-        #             ret_futures.append(future)
+        if self.with_lt_pred:
+            if os.path.exists(self.lt_pred_results_path):
+                with open(self.lt_pred_results_path, 'rb') as file:        
+                    self.lt_pred_results = pickle.load(file)                 
             
-        #         for future in ret_futures:
-        #             results.append(future.result())
+            else:
+                ret_futures = list()
+                results = list()
+                        
+                directory = "/opt/projects/microkube-python-v2/tools/promtheus-downloader/default-data-aggregated-1705215956/cpu_usage"
+                t0 = time.time()
+                with futures.ThreadPoolExecutor() as executor:
+                    for service in self.get_all_services_from_cfg():
+                        service_rsplit = service.rsplit('-',1)[0]
+                        path = directory + "/" + service_rsplit + ".csv"
+                        service_history_data = pd.read_csv(path).iloc[:,1].to_numpy().flatten()
+                        long_term_pred = LongTermPred(self.__cfg, self.__logger, service_history_data)
+                        future = executor.submit(long_term_pred.predict, service)
+                        ret_futures.append(future)
                 
-        #     self.lt_pred_results = results
-        #     print(f'cost time: {time.time()-t0}')
-        #     print(self.lt_pred_results)
-        #     self.__logger.info('AHPA Scaler preStart finish')
+                    for future in ret_futures:
+                        results.append(future.result())
+                    
+                self.lt_pred_results = results
+                print(f'cost time: {time.time()-t0}')
+                print(self.lt_pred_results)
+                self.__logger.info('AHPA Scaler preStart finish')
 
-        #     with open(self.lt_pred_results_path, 'wb') as file:
-        #         pickle.dump(results, file)
+                with open(self.lt_pred_results_path, 'wb') as file:
+                    pickle.dump(results, file)
                 
         for service_name in self.get_all_services_from_cfg():
             resources_config = copy.deepcopy(self.get_resources_config_from_cfg(service_name))
@@ -131,18 +134,23 @@ class AHPAScaler(Scaler):
             
             # TODO predict
             st_controller_result = self.st_controller()
-            # lt_controller_result = self.lt_controller()
+            
+            if self.with_lt_pred:
+                lt_controller_result = self.lt_controller()
 
             # TODO set self.replicas 
             
             result = dict()
             
             for service in self.__services:
-                # lt_ret = lt_controller_result.get(service)
+                
+                lt_ret = -1 if not self.with_lt_pred else lt_controller_result.get(service)
                 st_ret = st_controller_result.get(service)
 
                 max_conf = self.get_service_max_replicas_from_cfg(service)
-                _max = max(st_ret, 1)
+                
+                _max = max(lt_ret, st_ret, 1) if self.with_lt_pred else max(st_ret, 1)
+                
                 _max = min(_max, max_conf)
                 
                 scale_info = '/'                                
@@ -161,10 +169,14 @@ class AHPAScaler(Scaler):
                     result[service] = dict(replicas=_max)
                     last_result[service] = _max
                     time_sclices[service] = self.max_time_sclice      
+                     
+                if self.with_lt_pred:
+                    self.__logger.info(f'time_sclice: {time_sclices[service]}, lt_ret:{lt_ret}, st_ret: {st_ret}, ' 
+                                    f'replicas: {last_result[service]}, scale_info: {scale_info} - {service}')          
+                else:
+                    self.__logger.info(f'time_sclice: {time_sclices[service]}, st_ret: {st_ret}, ' 
+                                    f'replicas: {last_result[service]}, scale_info: {scale_info} - {service}')     
                     
-                self.__logger.info(f'time_sclice: {time_sclices[service]}, st_ret: {st_ret}, ' 
-                                   f'replicas: {last_result[service]}, scale_info: {scale_info} - {service}')          
-                
             for service, conf in result.items():
                 self.replicas[service] = conf
                             

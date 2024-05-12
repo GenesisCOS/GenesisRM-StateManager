@@ -97,30 +97,23 @@ class PrometheusUtil(object):
     def __init__(self, cfg: DictConfig, logger: Logger) -> None:
         self.__host = cfg.base.prometheus.host 
         
-        
-    def get_deployment_cpu_usage_from_prom(self):
-        pass 
-        
-    def get_cpu_usage_from_prom(self, 
-                                dep_name: str, 
-                                namespace: str,
-                                start: int,
-                                end: int) -> Dict | None:
-        
-        job = f'rate(swiftmonitor_cpu_usage{{namespace=\"train-ticket\", podname=~\"{dep_name}-.*\"}}[5s])/1000000000'
-        
+    def __request(self, job, start, end, step):
         resp = requests.get(
             url=self.__host + '/api/v1/query_range',
             params={
                 'query': job,
                 'start': f'{start}',
                 'end': f'{end}',
-                'step': '1s'
+                'step': step
             }
         ) 
+        return resp 
+        
+    def __get_result(self, job, start, end, step):
+        resp = self.__request(job, start, end, step)
         
         resp = json.loads(resp.text)
-                
+        
         if resp.get('status') == 'success':
             result_type = resp.get('data').get('resultType')
             results = resp.get('data').get('result')
@@ -153,14 +146,30 @@ class PrometheusUtil(object):
                         df = pd.DataFrame(dict(
                             timestamps=_tmp['timestamps'],
                             value=_tmp['value1'] + _tmp['value2']
-                        ))
-                        
+                        ))       
                 
                 return df 
             else:
                 raise Exception(f'Result type is not matrix but {result_type}')
         else:
-            raise Exception(f'Prometheus return status={resp.get("status")} job={job}') 
+            raise Exception(f'Prometheus return status={resp.get("status")} job={job}')
+        
+    def get_cpu_requested_from_prom(self, dep_name: str, namespace: str, state: str,
+                                    start: int, end: int) -> Dict | None:
+        job = f'sum(swiftmonitor_pod_cpu_request{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\", state=\"{state}\"}}) / 1000'
+        return self.__get_result(job, start, end, '1s')
+        
+    def get_cpu_allocated_from_prom(self, dep_name: str, namespace: str,
+                                    start: int, end: int) -> Dict | None: 
+        
+        job = f'sum(swiftmonitor_pod_cpu_allocated{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\"}})/1000'
+        return self.__get_result(job, start, end, '1s')
+        
+    def get_cpu_usage_from_prom(self, dep_name: str, namespace: str,
+                                start: int, end: int) -> Dict | None:
+        
+        job = f'sum(rate(swiftmonitor_cgroup_cpuacct_usage{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\"}}[5s]))/1000000000'
+        return self.__get_result(job, start, end, '1s')
 
 
 class DBUtil(object):
@@ -348,31 +357,6 @@ class DBUtil(object):
         data = self.__sql_driver.exec(sql)
 
         return data.ac_task_max.values
-
-    def get_call_num(self, src_svc, src_ep, dst_svc, dst_ep):
-        sql = f"SELECT request_num,time FROM response_time2 WHERE " \
-              f"src_sn = '{src_svc}' and src_en = '{src_ep}' and " \
-              f"dst_sn = '{dst_svc}' and dst_en = '{dst_ep}' and " \
-              f"window_size = {WINDOW_SIZE_S * 1000} and " \
-              f"cluster = 'production' " \
-              f"ORDER BY _time DESC " \
-              f"LIMIT 10"
-
-        data = self.__sql_driver.exec(sql)
-
-        request_num_values: np.ndarray = data.request_num.values
-        return np.mean(request_num_values), np.max(request_num_values), np.min(request_num_values)
-
-    def get_call_num2(self, service_name, endpoint_name, limit):
-        sql = f"SELECT request_num,time  FROM service_time_stats WHERE " \
-              f"sn = '{service_name}' and en = '{endpoint_name}' and cluster = 'production' " \
-              f"and window_size = {WINDOW_SIZE_S * 1000} " \
-              f"ORDER BY _time DESC " \
-              f"LIMIT {limit};"
-
-        data = self.__sql_driver.exec(sql)
-
-        return data.request_num.values
 
 
 class ServiceGraphUtil(object):

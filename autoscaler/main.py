@@ -107,20 +107,26 @@ def main(cfg: DictConfig) -> None:
         elif cfg.scaler.enabled_scaler == 'mem_scaler':
             from .statecontroller.mem_scaler import MemScaler 
             scaler = MemScaler(cfg, logger.getChild('MemScaler'))
+            
+        elif cfg.scaler.enabled_scaler == 'cb_scaler':
+            from .statecontroller.autothreshold_scaler import CBScaler
+            scaler = CBScaler(cfg, logger)
         
         else:
             raise Exception(f'unsupported autoscaler {cfg.scaler.enabled_scaler}')
     
     # Pre start 
     if scaler is not None:
-        scaler.pre_start()
+        ok = scaler.pre_start()
+        if not ok:
+            raise Exception('scaler预启动失败')
     
     # Run locust 
     workers = cfg.base.locust.workers 
     locustfile = pathlib.Path(f'autoscaler/locust/{enabled_service_config}')/'locustfile.py'
     temp_dir = pathlib.Path('autoscaler/locust/output')/f'csv-output-{int(time.time())}'
     dataset = f'autoscaler/data/datasets/{enabled_service_config}/rps/{cfg.base.locust.workload}.txt'
-    url = cfg.base.locust.url 
+    url = cfg[cfg.enabled_service_config].host 
     
     locust_run = False 
     if 'locust_enabled' not in cfg.scaler[cfg.scaler.enabled_scaler] or \

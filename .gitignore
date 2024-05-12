@@ -7,3 +7,5 @@ outputs
 autoscaler/logs/**
 
 request.log
+
+tmp
