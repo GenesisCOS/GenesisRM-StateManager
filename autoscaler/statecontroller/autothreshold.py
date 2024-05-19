@@ -18,10 +18,9 @@ import vowpalwabbit
 from omegaconf import DictConfig
 import numpy as np 
 import pandas as pd
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler 
 
 from . import Scaler
+from ..util.locust import Locust  
 
 
 # Labels 
@@ -46,63 +45,6 @@ APPMANAGER_HOST = 'localhost:10000'
 
 ROOT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
-
-def with_locust(temp_dir, locustfile, url, workers, dataset, logger):
-    
-    env = copy.deepcopy(os.environ)
-    
-    # Run opentelemetry collector 
-    logger.info('启动 otelcol ...')
-    args = [
-        'otelcol',
-        f'--config={ROOT_PATH}/../../config/otelcol/config.yaml'
-    ]
-    otelcol_p = subprocess.Popen(
-        args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=env
-    )
-    
-    env['DATASET'] = dataset 
-    env['HOST'] = url
-
-    # Run locust workers 
-    logger.info('启动 Locust workers ...')
-    args = [
-        'locust',
-        '--worker',
-        '-f', locustfile,
-    ]
-    worker_ps = []
-    for _ in range(workers):
-        worker_ps.append(subprocess.Popen(
-            args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env 
-        ))
-
-    # Run locust master
-    logger.info('启动 Locust master ...')
-    args = [
-        'locust',
-        '--master',
-        '--expect-workers', f'{workers}',
-        '--headless',
-        '-f', locustfile,
-        '-H', url,
-        '--csv', temp_dir/'locust',
-        '--csv-full-history',
-    ]
-    master_p = subprocess.Popen(
-        args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, 
-        stderr=subprocess.DEVNULL,
-        env=env
-    )
-
-    time.sleep(1)
-    return master_p, worker_ps, otelcol_p
-
-
 def swift_list_pods_of_dep(namespace, label, value):
     
     resp = requests.post(
@@ -121,12 +63,11 @@ def swift_list_pods_of_dep(namespace, label, value):
 
 class LocustSample(object):
     def __init__(self, stats_df: pd.DataFrame):
-        stats_df = stats_df[stats_df.Name == 'Aggregated']
-        self.__p99_rt = stats_df['99%'].values[0]
-        self.__p95_rt = stats_df['95%'].values[0]
-        self.__p50_rt = stats_df['50%'].values[0]
-        self.__mean_rt = stats_df['Average Response Time'].values[0]
-        self.__rps = stats_df['Requests/s'].values[0] 
+        self.__p99_rt = stats_df['p99_rt'].values[0]
+        self.__p95_rt = stats_df['p95_rt'].values[0]
+        self.__p50_rt = stats_df['p50_rt'].values[0]
+        self.__mean_rt = stats_df['mean_rt'].values[0]
+        self.__rps = stats_df['rps'].values[0] 
     
     def response_time(self, type: str):
         """Get response time 
@@ -149,34 +90,25 @@ class LocustSample(object):
         return self.__rps  
 
 
-class CBScaler(Scaler, FileSystemEventHandler):
-    def __init__(self, cfg: DictConfig, logger: Logger):
+class AutoThreshold(Scaler):
+    def __init__(self, cfg: DictConfig, data_dir, logger: Logger):
         super().__init__(cfg, logger)
-        
         self.__cfg = cfg 
         self.__scaler_cfg = cfg.scaler.cb_scaler  
-        self.__logger = logger.getChild('AutoThreshold')
-        
+        self.__logger = logger
         self.__logger.info('AutoThreshold 初始化')
-        
         self.__SLO = 1000
         self.__logger.info(f'SLO 为 {self.__SLO} 毫秒')
-        
-        self.__priv_data_path = pathlib.Path('autoscaler/data/autothreshold_data')
-        
-        # Locust 配置
-        self.__locustfile = pathlib.Path(f'autoscaler/locust/{cfg.enabled_service_config}')/'locustfile.py'
-        self.__locust_temp_dir = pathlib.Path('autoscaler/locust/output')/f'csv-output-{int(time.time())}'
-        self.__locust_dataset_dir = pathlib.Path(f'autoscaler/data/datasets/{cfg.enabled_service_config}/rps')
-        self.__locust_stats_file = self.__locust_temp_dir / 'locust_stats.csv'
-        self.__locust_host_url = cfg[cfg.enabled_service_config].host 
-        
-        self.__explore_episode = 360 * 8
-        
+        self.__priv_data_path = data_dir
+        #self.__workload = 'nasa_1day_6hour_min_700'
+        self.__workload = 'const_1000'
+        self.__locust = Locust(
+            self.__cfg, f'csv-output-{int(time.time())}',
+            self.__workload, self.__logger.getChild('Locust')
+        ) 
+        self.__explore_episode = 360 * 8  # 八个“NASA日”
         self.__svc_groups = self.__scaler_cfg.groups 
-        
         self.__thresholds = list() 
-        
         self.__cb_nr_action = 1
         self.__nr_group = len(self.__svc_groups)
         self.__actions = list()
@@ -185,7 +117,6 @@ class CBScaler(Scaler, FileSystemEventHandler):
             self.__actions.append(group.thresholds)
             self.__thresholds.append(group.thresholds[0])
         self.__logger.info(f'一共 {self.__nr_group} 个组 {self.__cb_nr_action} 个动作')
-        
         self.__learn = self.__scaler_cfg.learn
          
         # TODO 如果 learn 为 true 且发现启动了全局 locust
@@ -199,32 +130,23 @@ class CBScaler(Scaler, FileSystemEventHandler):
                                                quiet=True)
             
         self.__samples = list()
-        
         self.__r_controller_thread = \
             threading.Thread(target=self.replicas_controller,
                              daemon=True)
-        self.__locust_observer = Observer()
-        
-        self.__locust_master_p = None 
-        self.__locust_worker_ps = None 
-        self.__otelcol_p = None 
-        
         self.__last_modify_ts = None 
-        
         self.__start_learning = threading.Semaphore()
         self.__start_learning.acquire()
         
         # 探索 loop 
         self.explore_count = {i + 1: 0 for i in range(self.__cb_nr_action)}
         
-    # 该方法被 watchdog observer 调用
-    def on_modified(self, event):
+    def locust_requests_on_modified(self, event):
         ts = time.time()
         if self.__last_modify_ts is not None:
             if ts - self.__last_modify_ts < 10:
                 return 
         self.__last_modify_ts = ts
-        self.__logger.info('locust_stats.csv 发生变化')
+        self.__logger.info('requests.csv 发生变化')
         self.__start_learning.release()
             
     def pre_start(self):
@@ -235,47 +157,12 @@ class CBScaler(Scaler, FileSystemEventHandler):
         
         if self.__learn:
             self.__logger.info('启动 locust 与 otelcol')
-            self.__locust_master_p, self.__locust_worker_ps, self.__otelcol_p = with_locust(
-                self.__locust_temp_dir, 
-                self.__locustfile, 
-                self.__locust_host_url, 20, 
-                str(self.__locust_dataset_dir / 'nasa_1day_6hour.txt'), 
-                self.__logger)
-        
-            self.__logger.info('等待 locust 与 otelcol 启动完成')
-            while True:
-                if os.path.exists(self.__locust_temp_dir):
-                    break
-                time.sleep(10) 
-        
-            self.__logger.info('启动 watchdog oberserver')
-            self.__locust_observer.schedule(self, self.__locust_stats_file, recursive=False)
-            try:
-                self.__locust_observer.start()
-            except FileNotFoundError:
-                self.__logger.info(f'watchdog 未找到文件{self.__locust_stats_file}')
-                self.stop_locust()
-                return False 
+            self.__locust.start()
+            self.__logger.info('注册 oberserver')
+            self.__locust.register_observer_on_requests(
+                self.locust_requests_on_modified)
         
         return True 
-    
-    def stop_locust(self):
-        
-        self.__locust_master_p.kill()
-        self.__logger.info('等待 locust master 退出')
-        while True:
-            if self.__locust_master_p.poll() is not None:
-                break 
-            time.sleep(1)
-        
-        self.__logger.info('等待 locust workers 退出')
-        for p in self.__locust_worker_ps:
-            p.kill()
-            p.wait()
-        
-        self.__logger.info('等待 otelcol 退出')
-        self.__otelcol_p.kill()
-        self.__otelcol_p.wait() 
         
     def start(self):
         self.__logger.info(f'AuthThreshold start ... learn = {self.__learn}') 
@@ -288,7 +175,7 @@ class CBScaler(Scaler, FileSystemEventHandler):
         else:
             self.evaluation_loop()
         
-        self.stop_locust()
+        self.__locust.stop()
         self.__logger.info('AutoThreshold exit.')
             
     def evaluation_loop(self):
@@ -296,11 +183,11 @@ class CBScaler(Scaler, FileSystemEventHandler):
                 
     def explore_loop(self):
         self.__logger.info('探索 loop 启动')
+        samples_file = f'explore_samples-{self.__cfg.enabled_service_config}-{self.__workload}-{int(time.time())}.csv'
         
-        # 如果存在 explore_samples.csv 则直接退出
-        if os.path.exists(self.__priv_data_path / 'explore_samples.csv'):
-            self.__logger.info('之前已探索过 (explore_samples.csv 文件存在)')
-            return True 
+        samples_file = open(self.__priv_data_path / samples_file, 'w+')
+        samples_file.write('rps,p99_rt,p95_rt,p50_rt,mean_rt,action,action_p,allocation,avg_cpu_usage,overallocation_ratio\n')
+        samples_file.flush()
     
         for episode in range(self.__explore_episode):
             
@@ -321,7 +208,7 @@ class CBScaler(Scaler, FileSystemEventHandler):
             self.__start_learning.acquire() 
             
             # 处理 locust 统计数据
-            stats_df = pd.read_csv(self.__locust_stats_file)
+            stats_df = self.__locust.read_requests()
             locust_sample = LocustSample(stats_df)
             
             # 获取平均 CPU 申请量
@@ -337,31 +224,34 @@ class CBScaler(Scaler, FileSystemEventHandler):
                 cpu_usage += cpu_usage_
             
             # 将构建好的 sample 加入到 self.__samples
+            self.__logger.info(
+                f'rps:{locust_sample.request_per_second()}|'
+                f'p99rt:{locust_sample.response_time("p99")}|'
+                f'thresholds:{thresholds}|'
+                f'cpu usage:{cpu_usage}|'
+                f'allocation:{allocation}|'
+                f'overalloc ratio:{(allocation - cpu_usage) / allocation}'
+            )
             sample = (locust_sample, action, action_p, allocation, cpu_usage)
             self.__samples.append(sample)
             
             self.__logger.info(f'explore loop {episode}/{self.__explore_episode}') 
         
-        # 将 self.__samples 导出为 explore_samples.csv 
-        # overallocation_ratio = (allocation - avg_cpu_usage) / allocation
-        columns = ['rps', 'p99_rt', 'p95_rt', 'p50_rt', 'mean_rt', 'action', 'action_p', 'allocation', 'avg_cpu_usage', 'overallocation_ratio']
-        data = list()
-        for sample in self.__samples:
-            locust_sample, action, action_p, allocation, cpu_usage = sample 
-            data.append([
-                locust_sample.request_per_second(),
-                locust_sample.response_time('p99'),
-                locust_sample.response_time('p95'),
-                locust_sample.response_time('p50'),
-                locust_sample.response_time('mean'),
-                action, 
-                action_p,
-                allocation,
-                cpu_usage,
-                (allocation - cpu_usage) / allocation
-            ])
-        df = pd.DataFrame(data=data, columns=columns)
-        df.to_csv(self.__priv_data_path / 'explore_samples.csv')
+            # 将 self.__samples 导出为 explore_samples.csv 
+            # overallocation_ratio = (allocation - avg_cpu_usage) / allocation 
+            samples_file.write(
+                f'{locust_sample.request_per_second()},'
+                f'{locust_sample.response_time("p99")},'
+                f'{locust_sample.response_time("p95")},'
+                f'{locust_sample.response_time("p50")},'
+                f'{locust_sample.response_time("mean")},'
+                f'{action},'
+                f'{action_p},'
+                f'{allocation},'
+                f'{cpu_usage},'
+                f'{(allocation - cpu_usage) / allocation}\n'
+            )
+            samples_file.flush()
         
         self.__logger.info('探索 loop 退出')  
         return True 
@@ -480,7 +370,7 @@ class CBScaler(Scaler, FileSystemEventHandler):
                 for future in as_completed(ret_futures):
                     future.result()
             
-            time.sleep(3)
+            time.sleep(1)
             
     def select_rcn_pods_to_rr(self, pods, number):
         ret_pods = list()
@@ -628,18 +518,6 @@ class CBScaler(Scaler, FileSystemEventHandler):
             a *= len(self.__actions[i])
             actions.append(threshold)
         return list(reversed(actions)) 
-    
-    def get_response_time(self) -> int:
-        # TODO 从 PostgreSQL 获取平均响应时间
-        pass 
-    
-    def get_allocation(self) -> int:
-        # TODO 从 Prometheus 中获取总 CPU requests
-        pass 
-    
-    def get_rps(self) -> int:
-        # TODO 从 PostgreSQL 中获取平均吞吐量
-        pass 
         
     def get_action(self, rps, rt):
         distribution = self.__vw.predict(f'| rps:{rps} rt:{rt}') 

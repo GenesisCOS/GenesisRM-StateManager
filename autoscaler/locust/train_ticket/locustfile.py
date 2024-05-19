@@ -1,10 +1,13 @@
 import logging as log
 import time
+import fcntl 
 import random
 import os 
 import json 
+import threading 
 from pathlib import Path
 
+import numpy as np
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource
@@ -23,25 +26,27 @@ WAIT_MAX = 5
 locust.stats.CONSOLE_STATS_INTERVAL_SEC = 600
 locust.stats.HISTORY_STATS_INTERVAL_SEC = 60
 locust.stats.CSV_STATS_INTERVAL_SEC = 60
-locust.stats.CSV_STATS_FLUSH_INTERVAL_SEC = 60
+locust.stats.CSV_STATS_FLUSH_INTERVAL_SEC = 50
 locust.stats.CURRENT_RESPONSE_TIME_PERCENTILE_WINDOW = 60
 locust.stats.PERCENTILES_TO_REPORT = [0.50, 0.80, 0.90, 0.95, 0.98, 0.99, 0.995, 0.999, 1.0]
 
 setup_logging("INFO", None)
 
 DATA_DIR = os.getenv('DATA_DIR')
-if DATA_DIR is not None:
-    request_log_file = open(f'{DATA_DIR}/request.log', 'a') 
-else:
-    request_log_file = open('request.log', 'a')
+
+LOCUST_INDEX = int(os.getenv('LOCUST_INDEX'))
+
+request_log_file = None 
     
 WAIT_TIME = os.getenv('WAIT_TIME')
 if WAIT_TIME is not None:
     WAIT_MIN = float(WAIT_TIME)
     WAIT_MAX = int(WAIT_TIME)
 
-HOST = os.getenv('TARGET_HOST')
 DATASET = os.getenv('DATASET')
+SERVICE_NAME = os.getenv('SERVICE_NAME')
+
+CLUSTER_GROUP = os.getenv('CLUSTER_GROUP')
 
 CLUSTER = 'production'
 
@@ -63,8 +68,9 @@ OFFSET = 210
 """ Init opentelemetry """
 
 resource = Resource(attributes={
-    "service.name": "locust",
-    "service.version": "0.0.1"
+    "service.name": SERVICE_NAME,
+    "service.version": "0.0.1",
+    "cluster.group": CLUSTER_GROUP,
 })
 
 provider = TracerProvider(resource=resource)
@@ -82,8 +88,17 @@ tracer = trace.get_tracer("my.tracer.name")
 
 """ Init opentelemetry end """
 
+REAL_START_TIME = None 
+RESPONSE_TIMES = list()
+REPORT_INTERVAL = 60 
+
+STATS_LOCK = threading.Lock()
+
+CLIENT_ID = None 
+
+REQUEST_TIMEOUT = (0.1, 3)
+
 class QuickStartUser(HttpUser):
-    host = HOST 
     wait_time = between(WAIT_MIN, WAIT_MAX)
 
     VERIFY_CODE_URL = "/api/v1/verifycode/generate"
@@ -113,16 +128,123 @@ class QuickStartUser(HttpUser):
         self.end_station = None
         self.get_stations = False
         
-    @events.request.add_listener
-    def on_request(response_time, context, name, **kwargs):
-        global tracer 
+    @events.report_to_master.add_listener
+    def on_report_to_master(client_id, data):
+        global CLIENT_ID
+        CLIENT_ID = client_id
         
-        request_log_file.write(json.dumps({
-            'time': time.perf_counter(),
-            'latency': response_time / 1e3,
-            'context': context,
-            'name': name
-        }) + '\n')
+    @events.request.add_listener
+    def on_request(response_time, context, name, exception, **kwargs):
+        global RESPONSE_TIMES, REAL_START_TIME, REPORT_INTERVAL
+        global request_log_file
+        
+        if not os.path.exists(DATA_DIR):
+            return 
+        
+        time_ = time.time()
+        
+        if LOCUST_INDEX == 1:
+            ok = STATS_LOCK.acquire(blocking=False)
+            if ok:
+                if REAL_START_TIME is None:
+                    REAL_START_TIME = time_ 
+                    with open(f'{DATA_DIR}/real_start_time.txt', 'w+') as real_start_time_file:
+                        real_start_time_file.write(f'{REAL_START_TIME}')
+                        real_start_time_file.flush()
+                else:
+                    if time_ - REAL_START_TIME > REPORT_INTERVAL:
+                        real_time_start__ = REAL_START_TIME
+                        
+                        with open(f'{DATA_DIR}/request.log') as request_log:
+                            for line in request_log.readlines():
+                                try:
+                                    request = json.loads(line)
+                                    RESPONSE_TIMES.append(request['latency'])
+                                except:
+                                    continue
+                        
+                        with open(f'{DATA_DIR}/requests.csv', 'w+') as request_csv:
+                            results = np.array(RESPONSE_TIMES)
+                            
+                            mean_rt = np.mean(results)
+                            max_rt = np.max(results)
+                            min_rt = np.min(results)
+                            p99_rt = np.percentile(results, 99)
+                            p95_rt = np.percentile(results, 95)
+                            p90_rt = np.percentile(results, 90)
+                            p50_rt = np.percentile(results, 50)
+                            rps = len(results) / (time_ - real_time_start__)
+                            
+                            request_csv.write(
+                                'mean_rt,max_rt,min_rt,p99_rt,p95_rt,p90_rt,p50_rt,rps\n'
+                                f'{mean_rt},{max_rt},{min_rt},{p99_rt},{p95_rt},{p90_rt},{p50_rt},{rps}\n'
+                            )
+                            request_csv.flush()
+                        
+                        REAL_START_TIME = time.time() + 20
+                        with open(f'{DATA_DIR}/real_start_time.txt', 'w+') as real_start_time_file:
+                            real_start_time_file.write(f'{REAL_START_TIME}')
+                            real_start_time_file.flush()
+                        time.sleep(20)
+                        
+                        os.remove(f'{DATA_DIR}/request.log')
+                        
+                        RESPONSE_TIMES = list()
+                STATS_LOCK.release()
+            
+        latency = response_time
+        
+        if LOCUST_INDEX != 1:
+            while True:
+                if os.path.exists(f'{DATA_DIR}/real_start_time.txt'):
+                    break 
+                time.sleep(1)
+            with open(f'{DATA_DIR}/real_start_time.txt', 'r') as real_start_time_file:
+                while True:
+                    txt = real_start_time_file.read()
+                    if txt == '':
+                        continue
+                    if REAL_START_TIME is not None and (float(txt) - REAL_START_TIME) < 0:
+                        continue 
+                    break 
+                REAL_START_TIME = float(txt)
+        
+        if exception is None:
+            STATS_LOCK.acquire()
+            with open(f'{DATA_DIR}/request.log', 'a') as request_log_file:
+                
+                start_time = context['start_time_ms'] / 1000
+                if start_time >= REAL_START_TIME:
+                    fcntl.flock(request_log_file, fcntl.LOCK_EX)
+                    request_log_file.write(json.dumps(dict(
+                        time=time_,
+                        latency=latency,
+                        context=context,
+                        name=name,
+                        client_id=CLIENT_ID
+                    )) + '\n')
+                    request_log_file.flush()
+                    fcntl.flock(request_log_file, fcntl.LOCK_UN)
+                
+            STATS_LOCK.release()
+        else:
+            STATS_LOCK.acquire()
+            with open(f'{DATA_DIR}/error.log', 'a') as request_log_file:
+                
+                start_time = context['start_time_ms'] / 1000
+                if start_time >= REAL_START_TIME:
+                    fcntl.flock(request_log_file, fcntl.LOCK_EX)
+                    request_log_file.write(json.dumps(dict(
+                        time=time_,
+                        context=context,
+                        name=name,
+                        client_id=CLIENT_ID,
+                        exception=str(exception)
+                    )) + '\n')
+                    request_log_file.flush()
+                    fcntl.flock(request_log_file, fcntl.LOCK_UN)
+                
+            STATS_LOCK.release()
 
     @property
     def local_time(self):
@@ -146,7 +268,7 @@ class QuickStartUser(HttpUser):
             "cluster": CLUSTER
         }
 
-        resp = self.client.get(QuickStartUser.VERIFY_CODE_URL, context=context, headers=headers)
+        resp = self.client.get(QuickStartUser.VERIFY_CODE_URL, context=context, headers=headers, timeout=REQUEST_TIMEOUT)
         cookies = resp.cookies
         verify_code_cookies_dict = requests_utils.dict_from_cookiejar(cookies)
         verify_code_cookies_dict["answer"] = resp.headers.get("VerifyCodeAnswer")
@@ -176,7 +298,8 @@ class QuickStartUser(HttpUser):
             QuickStartUser.LOGIN_URL,
             json=data,
             headers=headers,
-            context=context
+            context=context,
+            timeout=REQUEST_TIMEOUT
         )
 
         if str(resp.headers.get("Content-Type")) == "application/json":
@@ -207,8 +330,11 @@ class QuickStartUser(HttpUser):
             "user_uuid": self.user_uuid,
             "start_time_ms": time.time() * 1000,
         }
-        resp = self.client.get(QuickStartUser.TRAIN_SERVICE_URL + "/trains",
-                               context=context, headers=headers)
+        resp = self.client.get(
+            "/api/v1/trainservice/trains",
+            context=context, headers=headers,
+            timeout=REQUEST_TIMEOUT
+        )
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1 and resp_json_dict["msg"] == "success":
             trains_list = resp_json_dict["data"]
@@ -224,7 +350,7 @@ class QuickStartUser(HttpUser):
             "start_time_ms": time.time() * 1000,
         }
         resp = self.client.get(QuickStartUser.STATION_SERVICE_URL + "/stations",
-                               context=context, headers=headers)
+                               context=context, headers=headers, timeout=REQUEST_TIMEOUT)
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1 and resp_json_dict["msg"] == "Find all content":
             stations_list = resp_json_dict["data"]
@@ -283,10 +409,15 @@ class QuickStartUser(HttpUser):
                 url=url,
                 json=data,
                 headers=headers,
-                context=context
+                context=context,
+                timeout=REQUEST_TIMEOUT
             )
-
-        resp_json_dict = resp.json()
+        try:
+            resp_json_dict = resp.json()
+        except:
+            resp_json_dict = None 
+        if resp_json_dict is None:
+            return None 
         if resp_json_dict["status"] == 1:
             return resp_json_dict["data"]
         else:
@@ -346,7 +477,8 @@ class QuickStartUser(HttpUser):
             QuickStartUser.ORDER_SERVICE + "/order/refresh",
             headers=headers,
             json=data,
-            context=context
+            context=context,
+            timeout=REQUEST_TIMEOUT
         )
 
         if resp.json()["status"] == 1:
@@ -361,7 +493,8 @@ class QuickStartUser(HttpUser):
             QuickStartUser.ORDER_OTHER_SERVICE + "/orderOther/refresh",
             headers=headers,
             json=data,
-            context=context
+            context=context,
+            timeout=REQUEST_TIMEOUT
         )
 
         if resp.json()["status"] == 1:
@@ -383,8 +516,12 @@ class QuickStartUser(HttpUser):
 
         resp = self.client.get(QuickStartUser.FOOD_SERVICE + "/foods/%s/%s/%s/%s" %
                                (date, start_station, end_station, trip_id),
-                               context=context, headers=headers)
-        resp_json_dict = resp.json()
+                               context=context, headers=headers, timeout=REQUEST_TIMEOUT)
+        try:
+            resp_json_dict = resp.json()
+        except:
+            return None 
+        
         if resp_json_dict["status"] == 1:
             return resp_json_dict["data"]
         else:
@@ -404,7 +541,8 @@ class QuickStartUser(HttpUser):
 
         resp = self.client.get(QuickStartUser.ASSURANCE_SERVICE + "/assurances/types",
                                context=context,
-                               headers=headers)
+                               headers=headers,
+                               timeout=REQUEST_TIMEOUT)
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1:
             return resp_json_dict["data"]
@@ -425,7 +563,7 @@ class QuickStartUser(HttpUser):
 
         resp = self.client.get(QuickStartUser.CONTACTS_SERVICE + "/contacts/account/" + self.user_id["fdse_microservice"],
                                context=context,
-                               headers=headers)
+                               headers=headers,timeout=REQUEST_TIMEOUT)
         resp_json_dict = resp.json()
         if resp_json_dict["status"] == 1:
             return resp_json_dict["data"]
@@ -495,42 +633,12 @@ class QuickStartUser(HttpUser):
             QuickStartUser.PRESERVE_SERVICE + "/preserve",
             context=context,
             headers=headers,
-            json=data
+            json=data,
+            timeout=REQUEST_TIMEOUT
         )
 
-    # @task
-    def test(self):
-        headers = {
-            "Authorization": "Bearer " + self.user_token["admin"],
-            "requestSendTimeNano": "{:.0f}".format(time.time() * 1000000000),
-            "cluster": CLUSTER
-        }
-        data = {
-            "userName": "ace",
-            "password": "222222",
-            "gender": 1,
-            "documentType": 1,
-            "documentNum": "2135488099312X",
-            "email": "ace@163.com"
-        }
-        print(self.client.post("/api/v1/adminuserservice/users",
-                               headers=headers, json=data).content)
-        users = self.client.get("/api/v1/adminuserservice/users", headers=headers).json()["data"]
-        print(len(users))
-        num = 0
-        for user in users:
-            print(user["userName"])
-            time.sleep(0.3)
-            if user["userName"][-1] == "\n":
-                resp_delete = self.client.delete("/api/v1/adminuserservice/users/" + user["userId"],
-                                                 headers=headers)
-                print(resp_delete.content)
-                num += 1
-        print(num)
-        self.stop()
-
     @task
-    def test_task(self):
+    def main_task(self):
         if self.first:
             self.first = False 
             return 
@@ -554,12 +662,13 @@ class QuickStartUser(HttpUser):
                 date
             )
             
-            _ = self.query_train_foods(
-                date,
-                ticket[0]["fromStationName"],
-                ticket[0]["toStationName"],
-                ticket[0]["tripId"]
-            )
+            if ticket is not None:
+                _ = self.query_train_foods(
+                    date,
+                    ticket[0]["fromStationName"],
+                    ticket[0]["toStationName"],
+                    ticket[0]["tripId"]
+                )
 
         # assurances_types = self.query_assurance_types()
         # contacts = self.query_contacts()

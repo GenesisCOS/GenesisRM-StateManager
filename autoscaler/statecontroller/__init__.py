@@ -1,5 +1,6 @@
 import time 
 import random 
+import datetime 
 import json 
 import urllib3 
 import requests 
@@ -82,6 +83,9 @@ class ServiceConfig(object):
     def get_resources_config_from_cfg(self, service):
         assert service in self.__service_configs
         return OmegaConf.to_object(self.__service_configs[service].resources)
+    
+    def get_service_names_from_cfg(self) -> List[str]:
+        return list(self.__service_configs.keys())
     
     def get_all_services_from_cfg(self) -> List[str]:
         return list(self.__service_configs.keys())
@@ -419,6 +423,9 @@ class Scaler(ServiceConfig, DBUtil, ServiceGraphUtil, PrometheusUtil):
         self.k8s_apps_v1: AppsV1Api = client.AppsV1Api() 
         self.k8s_core_v1: CoreV1Api = client.CoreV1Api()
         
+    def get_date_string(self) -> str:
+        return datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        
     def get_cpu_limit_dec_step(self, service_name: str) -> int:
         if service_name not in self.service_configs:
             raise Exception(f'service: {service_name} not find in config file.')
@@ -440,6 +447,33 @@ class Scaler(ServiceConfig, DBUtil, ServiceGraphUtil, PrometheusUtil):
     def get_k8s_deployment_ready_replicas(self, dep_name: str, namespace: str):
         dep = self.get_k8s_deployment(dep_name, namespace) 
         return dep.status.ready_replicas
+    
+    def __check_respones(self, resp):
+        try:
+            resp_json = json.loads(resp)
+        except:
+            return None 
+        
+        if resp_json['status'] == 'success':
+            return resp
+        return None 
+    
+    def list_k8s_pods_for_deployment(self, namespace, name) -> List[Dict] | None:
+    
+        resp = requests.post(
+            f'http://{self.cfg.base.appmanager.host}/pods/list-for-deploy/',
+            json=dict(
+                namespace=namespace,
+                name=name
+            ),
+            headers=dict(
+                Connection='close'
+            )
+        )
+        
+        resp = self.__check_respones(resp)
+        if resp is not None:
+            return resp['pods']
     
     def list_running_pods_of_dep(self, dep_name: str,
                                  namespace: str):
@@ -588,12 +622,7 @@ class Scaler(ServiceConfig, DBUtil, ServiceGraphUtil, PrometheusUtil):
             
     def patch_k8s_pod(self, pod_name: str, namespace: str,
                       body: str, async_req=False):
-        
-        return self.k8s_core_v1.patch_namespaced_pod(
-            pod_name, namespace, 
-            body=body,
-            async_req=async_req
-        )
+        return self.k8s_core_v1.patch_namespaced_pod(pod_name, namespace, body=body, async_req=async_req)
 
     def get_k8s_deployment_replicas(self, dep_name: str, namespace: str):
         return self.get_k8s_deployment(dep_name, namespace).spec.replicas 

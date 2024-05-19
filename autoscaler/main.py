@@ -1,71 +1,13 @@
 import sys
-import os 
-import copy 
 import time
-import subprocess
+import pathlib 
 import threading
 import logging
-import pathlib 
 
 import hydra 
 from omegaconf import DictConfig
 
-ROOT_PATH = os.path.split(os.path.realpath(__file__))[0]
-
-def with_locust(temp_dir, locustfile, url, workers, dataset, logger):
-    
-    env = copy.deepcopy(os.environ)
-    
-    # Run opentelemetry collector 
-    logger.info('Start Opentelemetry Collector ...')
-    args = [
-        'otelcol',
-        f'--config={ROOT_PATH}/../config/otelcol/config.yaml'
-    ]
-    otelcol_p = subprocess.Popen(
-        args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=env
-    )
-    
-    env['DATASET'] = dataset 
-    env['HOST'] = url
-
-    # Run locust workers 
-    logger.info('Start Locust workers ...')
-    args = [
-        'locust',
-        '--worker',
-        '-f', locustfile,
-    ]
-    worker_ps = []
-    for _ in range(workers):
-        worker_ps.append(subprocess.Popen(
-            args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=env 
-        ))
-
-    # Run locust master
-    logger.info('Start Locust master ...')
-    args = [
-        'locust',
-        '--master',
-        '--expect-workers', f'{workers}',
-        '--headless',
-        '-f', locustfile,
-        '-H', url,
-        '--csv', temp_dir/'locust',
-        '--csv-full-history',
-    ]
-    master_p = subprocess.Popen(
-        args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, 
-        stderr=subprocess.DEVNULL,
-        env=env
-    )
-
-    time.sleep(1)
-    return master_p, worker_ps, otelcol_p
+from .util.locust import Locust 
 
 banner = '''
 
@@ -94,7 +36,8 @@ def main(cfg: DictConfig) -> None:
         # Run scaler 
         if cfg.scaler.enabled_scaler == 'swiftkube_scaler':
             from .statecontroller.swift_scaler import SwiftKubeScaler
-            scaler = SwiftKubeScaler(cfg, logger.getChild('SwiftKubeScaler'))
+            scaler = SwiftKubeScaler(cfg, pathlib.Path('autoscaler/data/swiftkube_data'), 
+                                     logger.getChild('SwiftKube'))
             
         elif cfg.scaler.enabled_scaler == 'nw_scaler':
             from .statecontroller.nw_scaler import NWScaler
@@ -109,8 +52,14 @@ def main(cfg: DictConfig) -> None:
             scaler = MemScaler(cfg, logger.getChild('MemScaler'))
             
         elif cfg.scaler.enabled_scaler == 'cb_scaler':
-            from .statecontroller.autothreshold_scaler import CBScaler
-            scaler = CBScaler(cfg, logger)
+            from .statecontroller.autothreshold import AutoThreshold
+            scaler = AutoThreshold(cfg, pathlib.Path('autoscaler/data/autothreshold_data'), 
+                              logger.getChild('AutoThreshold'))
+            
+        elif cfg.scaler.enabled_scaler == 'autoweight':
+            from .statecontroller.autoweight import AutoWeight
+            scaler = AutoWeight(cfg, pathlib.Path('autoscaler/data/autoweight_data'),
+                                logger.getChild('AutoWeight'))
         
         else:
             raise Exception(f'unsupported autoscaler {cfg.scaler.enabled_scaler}')
@@ -121,35 +70,26 @@ def main(cfg: DictConfig) -> None:
         if not ok:
             raise Exception('scaler预启动失败')
     
-    # Run locust 
-    workers = cfg.base.locust.workers 
-    locustfile = pathlib.Path(f'autoscaler/locust/{enabled_service_config}')/'locustfile.py'
-    temp_dir = pathlib.Path('autoscaler/locust/output')/f'csv-output-{int(time.time())}'
-    dataset = f'autoscaler/data/datasets/{enabled_service_config}/rps/{cfg.base.locust.workload}.txt'
-    url = cfg[cfg.enabled_service_config].host 
+    locust = Locust(
+        cfg, f'csv-output-{int(time.time())}', 
+        cfg.base.locust.workload, logger.getChild('Locust')
+    )
     
     locust_run = False 
     if 'locust_enabled' not in cfg.scaler[cfg.scaler.enabled_scaler] or \
             cfg.scaler[cfg.scaler.enabled_scaler]['locust_enabled']:
-        master_p, worker_ps, otelcol_p = with_locust(
-            temp_dir, locustfile, url, workers, dataset, logger)
+        locust.start()
         locust_run = True 
     else:
         logger.info('Locust will not run ...')
 
     if locust_run:
-        with master_p:
+        scaler_thread = None 
+        if scaler is not None:
+            scaler_thread = threading.Thread(target=scaler.start, name='scaler-thread', daemon=True)
+            scaler_thread.start()
             
-            scaler_thread = None 
-            if scaler is not None:
-                scaler_thread = threading.Thread(target=scaler.start, name='scaler-thread', daemon=True)
-                scaler_thread.start()
-            
-            # Wait locust 
-            while True:
-                if master_p.poll() is not None:
-                    break 
-                time.sleep(1)
+        locust.wait()
     else:
         scaler_thread = None 
         if scaler is not None:
@@ -157,11 +97,7 @@ def main(cfg: DictConfig) -> None:
             scaler_thread.start()
         scaler_thread.join()
     
-    if locust_run:
-        for p in worker_ps:
-            p.wait()
-        otelcol_p.kill()
-        otelcol_p.wait()
+    locust.stop()
 
 
 if __name__ == '__main__':

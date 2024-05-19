@@ -8,6 +8,7 @@ import threading
 import logging 
 import pickle
 import traceback 
+import pathlib 
 from concurrent import futures
 from concurrent.futures import as_completed
 from typing import List, Dict, Tuple 
@@ -91,20 +92,6 @@ class PandasDataset(object):
     
 
 def swift_list_pods_of_dep(namespace, label, value):
-    user_agent_list = [
-        "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.62 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.101 Safari/537.36",
-        "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)",
-        "Mozilla/5.0 (Macintosh; U; PPC Mac OS X 10.5; en-US; rv:1.9.2.15) Gecko/20110303 Firefox/3.6.15",
-        "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Maxthon 2.0)",
-        "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; TencentTraveler 4.0)",
-        "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)",
-        "Mozilla/4.0 (compatible; MSIE 6.0; ) Opera/UCWEB7.0.2.37/28/999",
-        "Mozilla/5.0 (compatible; MSIE 9.0; Windows Phone OS 7.5; Trident/5.0; IEMobile/9.0; HTC; Titan)"
-    ]
     
     resp = requests.post(
         'http://localhost:10000/pods/lister/',
@@ -115,18 +102,19 @@ def swift_list_pods_of_dep(namespace, label, value):
         ),
         headers={
             'Connection': 'close',
-            'User-Agent': random.choice(user_agent_list)
         }
     )
     return json.loads(resp.text)
    
 
 class SwiftKubeScaler(Scaler):
-    def __init__(self, cfg, logger: Logger):
+    def __init__(self, cfg, data_dir: pathlib.Path, logger: Logger):
         super().__init__(cfg, logger)
         
         self.__cfg = cfg 
-        self.__logger = logger.getChild('GenesisRM')
+        self.__logger = logger
+        
+        self.__priv_data_dir = data_dir
         
         self.__kafka_consumer = None 
         self.__kafka_data: Dict[str, Dict[str, PandasDataset]] = dict()
@@ -154,15 +142,15 @@ class SwiftKubeScaler(Scaler):
         self.__sync_executor = futures.ThreadPoolExecutor()
         
         # Logging 
-        logfile_path = 'autoscaler/logs/'
+        logfile_path = self.__priv_data_dir / 'logs'
         formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(lineno)s: %(message)s')
-        self.__operation_logfile = logging.FileHandler(logfile_path + '/swiftkube_operation.log')
+        self.__operation_logfile = logging.FileHandler(logfile_path / 'swiftkube_operation.log')
         self.__operation_logfile.setFormatter(formatter)
-        self.__rtc_logfile = logging.FileHandler(logfile_path + '/swiftkube_rt.log')
+        self.__rtc_logfile = logging.FileHandler(logfile_path / 'swiftkube_rt.log')
         self.__rtc_logfile.setFormatter(formatter)
-        self.__stc_logfile = logging.FileHandler(logfile_path + '/swiftkube_st.log')
+        self.__stc_logfile = logging.FileHandler(logfile_path / 'swiftkube_st.log')
         self.__stc_logfile.setFormatter(formatter)
-        self.__cl_logfile = logging.FileHandler(logfile_path + '/swiftkube_control_loop.log')
+        self.__cl_logfile = logging.FileHandler(logfile_path / 'swiftkube_control_loop.log')
         self.__cl_logfile.setFormatter(formatter)
         
         # Init replicas and kafka data 
@@ -202,10 +190,8 @@ class SwiftKubeScaler(Scaler):
                     __l.addHandler(__enbpi_logfile)
                     self.__st_predictors[service][endpoint] = \
                         EnbpiPredictor(
-                            self.__cfg, 
-                            __l, 
-                            service,
-                            endpoint,
+                            self.__cfg, __l, 
+                            service, endpoint,
                             '(span_count * (rt_mean / 1000))',
                             agg_function='mean'
                         )
@@ -217,7 +203,6 @@ class SwiftKubeScaler(Scaler):
         )
         
         def __append_data(msg):
-            __l = self.__logger.getChild('KafkaAppender')
             value = json.loads(msg.value.decode()) 
             service_name = value['metadata']['serviceName']
             endpoint_name = value['metadata']['endpointName']
@@ -228,7 +213,6 @@ class SwiftKubeScaler(Scaler):
             __append_start = time.time()
             
             self.__kafka_data[service_name][endpoint_name].append(data)
-            __l.debug(f'append use {time.time() - __append_start}s')
         
         with futures.ThreadPoolExecutor(max_workers=40) as executor:
             for msg in self.__kafka_consumer:
@@ -248,7 +232,7 @@ class SwiftKubeScaler(Scaler):
                 raise Exception('lt_result_nasa.pkl not exists')
         
         elif self.__cfg.base.locust.workload == 'fluctuating':
-            data_path = 'autoscaler/data/swiftkube_data/lt_result_eclog.pkl'
+            data_path = self.__priv_data_dir / 'lt_result_eclog.pkl'
             if os.path.exists(data_path): 
                 self.__lt_logger.info('already trained.')
                 with open(data_path, 'rb') as data_file:
@@ -385,26 +369,16 @@ class SwiftKubeScaler(Scaler):
             if self.strategy == 'SGS-L1' or self.strategy == 'SG-L1':
                 
                 # Run controllers 
-                __run_controller_start = time.time()
-                with futures.ThreadPoolExecutor(max_workers=2) as executor:
-                    st_future = executor.submit(self.st_controller)
+                __run_controller_start = time.perf_counter()
+
+                st_controller_result = self.st_controller()
+                rt_controller_result = self.rt_controller()
+                
+                if self.strategy == 'SGS-L1':
+                    lt_controller_result = self.lt_controller()
                     
-                    while True:
-                        try:
-                            st_controller_result = st_future.result(0.9)
-                            break 
-                        except Exception as e:
-                            __cl_logger.info(f'ST controller exception {traceback.format_exc()}')
-                            rt_result = self.rt_controller()
-                            self.sync_running_replicas(rt_result)
-                    
-                    rt_controller_result = self.rt_controller()
-                    
-                    if self.strategy == 'SGS-L1':
-                        lt_controller_result = self.lt_controller()
-                    
-                __run_controller_time = time.time() - __run_controller_start
-                __cl_logger.info(f'Run controllers use {__run_controller_time}s')
+                __run_controller_time = time.perf_counter() - __run_controller_start
+                __cl_logger.info(f'Run controllers use {__run_controller_time}')
                 
                 result = dict()
                 
@@ -537,13 +511,6 @@ class SwiftKubeScaler(Scaler):
                     down_ts_delta = time.time() - prev_replicas_down_ts
                     replicas = lt_ret 
                     
-                    # 只能删除2个pod
-                    #if replicas <= prev_replicas - 2:
-                    #    replicas = prev_replicas - 2
-                        
-                    #if replicas >= prev_replicas + 1:
-                    #    replicas = prev_replicas + 1
-                    
                     if replicas < prev_replicas:
                         # 最多每60秒横向缩容一次
                         if down_ts_delta > 15 and token > 0:
@@ -646,41 +613,6 @@ class SwiftKubeScaler(Scaler):
                         l1_sleep=l1s,
                         l2_sleep=max_replicas - running - l1s
                     )
-                
-                # Fix result (Running pods should not be directly transformed to s2)
-                """
-                if self.__rt_l1_prev_result is not None:
-                    for service in self.__services:  
-                        prev_l1_sleep = self.__rt_l1_prev_result[service]['l1_sleep']
-                        tgt_l1_sleep = result[service]['l1_sleep']
-                        
-                        prev_running = self.__rt_l1_prev_result[service]['running']
-                        tgt_running = result[service]['running']
-                        
-                        if tgt_l1_sleep == 0:
-                            if prev_l1_sleep + prev_running > tgt_running:
-                                __delta = prev_l1_sleep + prev_running - tgt_running
-                                result[service]['l2_sleep'] = result[service]['l2_sleep'] - __delta
-                                result[service]['l1_sleep'] = result[service]['l1_sleep'] + __delta 
-                        elif tgt_l1_sleep == -1:
-                            if prev_l1_sleep + prev_running > tgt_running:
-                                result[service]['l1_sleep'] = prev_l1_sleep + prev_running - tgt_running
-                                result[service]['l2_sleep'] = self.get_service_max_replicas_from_cfg(service) - \
-                                    result[service]['l1_sleep'] - result[service]['running']
-                            else:
-                                result[service]['l1_sleep'] = 0
-                                result[service]['l2_sleep'] = self.get_service_max_replicas_from_cfg(service) - \
-                                    result[service]['l1_sleep'] - result[service]['running']
-                else:
-                    for service in self.__services:
-                        tgt_l1_sleep = result[service]['l1_sleep']
-                        if tgt_l1_sleep == -1:
-                            result[service]['l1_sleep'] = self.get_service_max_replicas_from_cfg(service) - \
-                                result[service]['running']
-                            result[service]['l2_sleep'] = 0
-                """
-                # Refresh prev result 
-                #self.__rt_l1_prev_result = result 
                 
                 # Update replicas 
                 for service, conf in result.items():
