@@ -1,0 +1,38 @@
+with_lt_pred: False
+T: 14400
+H: 60
+lambda_1: 288
+lambda_2: 144
+delta_d: 10
+delta_i: 5
+
+forecast_length: 14400
+# quantile: 0.9
+trim_left: 2000
+trim_right: 1000
+
+guessd_delay: 300
+throughput: 0.3
+
+alpha: 0.9
+lam1: 1.0
+lam2: 1.0
+gamma: 1.0
+
+namespace: train-ticket
+# st_fetch_minutes: 6
+# st_history_len: 30
+st_fetch_minutes: 2
+st_history_len: 20
+wait: 180
+
+db:
+  table_name: span_stats 
+
+rate:
+  cpu_scale_rate: 0.75
+  scale_in_rate: 1.4
+
+freq:
+  scale_in_freq: 15
+  scale_out_freq: 60

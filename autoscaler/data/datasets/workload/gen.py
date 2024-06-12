@@ -5,6 +5,33 @@ import random
 WARMUP_LEN = 180
 WORKLOAD_LEN = 3600
 
+def cb_train():
+    start = 100
+    with open('cb_train.txt', 'w+') as file:
+        for i in range(12 * 60 * 60):
+            file.write(f'{int(start + i * 0.02083333)}\n')
+            file.flush()
+        start = 1000
+        for i in range(12 * 60 * 60):
+            file.write(f'{int(start - i * 0.02083333)}\n')
+            file.flush()
+            
+def test_hpa():
+    start = 100
+    high = 1700
+    t = int(1.5 * 60 * 60)
+    delta = high / t
+    with open('test_hpa.txt', 'w+') as file:
+        for i in range(10 * 60):  # warmup 
+            file.write(f'{100}\n')
+            file.flush()
+        for i in range(t):
+            file.write(f'{int(start + i * delta)}\n')
+            file.flush()
+        for i in range(t * 48):
+            file.write(f'{high}\n')
+            file.flush()
+
 def scale_nasa_min_(x):
     data = list()
     with open('nasa_1day_6hour.txt', 'r') as file:
@@ -34,6 +61,25 @@ def scale_nasa():
             result.append(i)
     with open('nasa_1day_6hour.txt', 'w+') as file:
         for i in result:
+            file.write(f'{int(i)}\n')
+            file.flush()
+            
+def gen_nasa(low, high):
+    data = list()
+    with open('nasa_1day_60min.txt', 'r') as file:
+        for line in file.readlines():
+            if line == '\n':
+                continue
+            data.append(int(line.strip('\n')))
+    o_low = 100
+    o_high = 1000
+    result = list()
+    for i in data:
+        r = (i - o_low) / (o_high - o_low)
+        x = r * (high - low) + low 
+        result.append(x)
+    with open(f'nasa_1day_60min_{low}_{high}.txt', 'w+') as file:
+         for i in result:
             file.write(f'{int(i)}\n')
             file.flush()
 
@@ -90,5 +136,5 @@ def gen_const(number: int):
 
 
 if __name__ == '__main__':
-    scale_nasa_min_(900)
+    test_hpa()
 

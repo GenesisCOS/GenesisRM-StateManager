@@ -48,9 +48,7 @@ class ServiceEndpointPair(object):
     
 class ServiceConfig(object):
     def __init__(self, cfg: DictConfig, logger: Logger) -> None:
-        self.__logger = logger.getChild('ServiceConfig')
-        self.__svc_cfg = cfg[cfg.enabled_service_config]
-        
+        self.__svc_cfg = cfg.service_config
         self.__service_configs = dict()
         self.__frontend_endpoints = dict()
         
@@ -160,19 +158,13 @@ class PrometheusUtil(object):
         
     def get_cpu_requested_from_prom(self, dep_name: str, namespace: str, state: str,
                                     start: int, end: int) -> Dict | None:
-        job = f'sum(swiftmonitor_pod_cpu_request{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\", state=\"{state}\"}}) / 1000'
-        return self.__get_result(job, start, end, '1s')
-        
-    def get_cpu_allocated_from_prom(self, dep_name: str, namespace: str,
-                                    start: int, end: int) -> Dict | None: 
-        
-        job = f'sum(swiftmonitor_pod_cpu_allocated{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\"}})/1000'
+        job = f'sum(swiftmonitor_pod_total_cpu_request{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\", state=\"{state}\"}}) / 1000'
         return self.__get_result(job, start, end, '1s')
         
     def get_cpu_usage_from_prom(self, dep_name: str, namespace: str,
                                 start: int, end: int) -> Dict | None:
         
-        job = f'sum(rate(swiftmonitor_cgroup_cpuacct_usage{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\"}}[5s]))/1000000000'
+        job = f'sum(rate(swiftmonitor_pod_cpu_usage{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\"}}[5s]))/1000000'
         return self.__get_result(job, start, end, '1s')
 
 

@@ -146,7 +146,7 @@ class MemScaler(Scaler):
         
         self.__logger = logger
         self.__enabled_service_config = cfg.enabled_service_config
-        self.__locust_url = cfg.base.locust.url 
+        self.__locust_url = cfg.locust.url 
         self.__locustfile = pathlib.Path(f'autoscaler/locust/{self.__enabled_service_config}')/'locustfile.py'
         
     def pre_start(self):

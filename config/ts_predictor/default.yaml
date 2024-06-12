@@ -1,0 +1,10 @@
+enbpi: 
+  history_len: 180
+  sample_x_len: 30
+  sample_y_len: 5
+  alpha: 0.01
+  db:
+    table_name: span_stats 
+    
+deepar:
+  model: deepar/train_ticket

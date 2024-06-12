@@ -16,11 +16,13 @@ def with_locust(output_dir,
                 logger: Logger):
     
     script_dir_path = os.path.split(os.path.realpath(__file__))[0]
-    locustfile = str(pathlib.Path(cfg[cfg.enabled_service_config].locust.script))
-    url = cfg[cfg.enabled_service_config].locust.host 
-    service_name = cfg[cfg.enabled_service_config].locust.service_name 
-    workers = cfg.base.locust.workers 
-    dataset_dir = pathlib.Path(cfg.base.locust.workload_dir)
+    locustfile = str(pathlib.Path(cfg.service_config.locust.script))
+    url = cfg.service_config.locust.host 
+    service_name = cfg.service_config.locust.service_name 
+    workers = cfg.locust.workers 
+    dataset_dir = pathlib.Path(cfg.locust.workload_dir)
+    use_timeout = cfg.locust.use_timeout 
+    timeout_sec = cfg.locust.timeout_sec
     dataset = dataset_dir / dataset 
     
     env = copy.deepcopy(os.environ)
@@ -37,17 +39,19 @@ def with_locust(output_dir,
         env=env
     )
     
+    if use_timeout:
+        env['TIMEOUT'] = str(timeout_sec)
     env['DATASET'] = str(dataset)
     env['HOST'] = url
     env['SERVICE_NAME'] = str(service_name)
-    env['CLUSTER_GROUP'] = str(cfg[cfg.enabled_service_config].locust.cluster_group)
+    env['CLUSTER_GROUP'] = str(cfg.service_config.locust.cluster_group)
     env['DATA_DIR'] = str(output_dir)
 
     # Run locust workers 
     args = [
         'locust',
         '--worker',
-        '--master-port', f'{cfg[cfg.enabled_service_config].locust.master_port}',
+        '--master-port', f'{cfg.service_config.locust.master_port}',
         '-f', locustfile,
     ]
     logger.info(f'启动 Locust workers 命令行: {str(args)}')
@@ -67,7 +71,7 @@ def with_locust(output_dir,
     args = [
         'locust',
         '--master',
-        '--master-bind-port', f'{cfg[cfg.enabled_service_config].locust.master_port}',
+        '--master-bind-port', f'{cfg.service_config.locust.master_port}',
         '--expect-workers', f'{workers}',
         '--headless',
         '-f', locustfile,
@@ -127,12 +131,12 @@ class Locust(FileSystemEventHandler):
         self.__file_oberservers = list()
         self.__started = False
         
-        self.__stats_file = pathlib.Path(self.__cfg.base.locust.output_dir) / self.__output_dir / 'locust_stats.csv' 
-        self.__requests_file = pathlib.Path(self.__cfg.base.locust.output_dir) / self.__output_dir / 'requests.csv' 
+        self.__stats_file = pathlib.Path(self.__cfg.locust.output_dir) / self.__output_dir / 'locust_stats.csv' 
+        self.__requests_file = pathlib.Path(self.__cfg.locust.output_dir) / self.__output_dir / 'requests.csv' 
         
     def start(self):
         self.__master_p, self.__worker_ps, self.__otelcol_p = with_locust(
-                pathlib.Path(self.__cfg.base.locust.output_dir) / self.__output_dir,  
+                pathlib.Path(self.__cfg.locust.output_dir) / self.__output_dir,  
                 f'{self.__dataset}.txt', 
                 self.__cfg,
                 self.__logger)

@@ -94,14 +94,14 @@ class AutoThreshold(Scaler):
     def __init__(self, cfg: DictConfig, data_dir, logger: Logger):
         super().__init__(cfg, logger)
         self.__cfg = cfg 
-        self.__scaler_cfg = cfg.scaler.cb_scaler  
+        self.__scaler_cfg = cfg.autoscaler   
         self.__logger = logger
         self.__logger.info('AutoThreshold 初始化')
         self.__SLO = 1000
         self.__logger.info(f'SLO 为 {self.__SLO} 毫秒')
         self.__priv_data_path = data_dir
         #self.__workload = 'nasa_1day_6hour_min_700'
-        self.__workload = 'const_1000'
+        self.__workload = 'cb_train'
         self.__locust = Locust(
             self.__cfg, f'csv-output-{int(time.time())}',
             self.__workload, self.__logger.getChild('Locust')
@@ -183,7 +183,7 @@ class AutoThreshold(Scaler):
                 
     def explore_loop(self):
         self.__logger.info('探索 loop 启动')
-        samples_file = f'explore_samples-{self.__cfg.enabled_service_config}-{self.__workload}-{int(time.time())}.csv'
+        samples_file = f'explore_samples-{self.__cfg.enabled_service_config}-{self.__workload}-{self.get_date_string()}.csv'
         
         samples_file = open(self.__priv_data_path / samples_file, 'w+')
         samples_file.write('rps,p99_rt,p95_rt,p50_rt,mean_rt,action,action_p,allocation,avg_cpu_usage,overallocation_ratio\n')
@@ -303,6 +303,9 @@ class AutoThreshold(Scaler):
             start=start,
             end=end)
         
+        if retval is None:
+            return None
+        
         return retval['value'].values 
     
     def fetch_cpu_requested_data(self, service_name, length):
@@ -334,6 +337,9 @@ class AutoThreshold(Scaler):
         def per_service_controller(service):
             # 获取历史 CPU 使用量
             history = self.fetch_cpu_usage_data(service, 3)
+            if history is None:
+                self.__logger.info(f"fetch CPU usage of service {service} failed")
+                return 
             #target = np.percentile(history, 90)
             target = np.max(history)
             

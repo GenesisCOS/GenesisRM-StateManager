@@ -28,7 +28,7 @@ from ..ts_predictor.enbpi import EnbpiPredictor
 GENESIS_IO_STATE_LABEL = 'swiftkube.io/state'
 GENESIS_IO_ENDPOINT_LABEL = 'swiftkube.io/endpoint'
 
-GENESIS_IO_POD_STATE_RR = 'Ready-FullSpeed'
+GENESIS_IO_POD_STATE_RR = 'Ready-Running'
 GENESIS_IO_POD_STATE_RFS = 'Ready-FullSpeed'
 GENESIS_IO_POD_STATE_RCN = 'Ready-CatNap'
 GENESIS_IO_POD_STATE_RLN = 'Ready-LongNap'
@@ -141,18 +141,6 @@ class SwiftKubeScaler(Scaler):
         self.__sync_replicas_future = None 
         self.__sync_executor = futures.ThreadPoolExecutor()
         
-        # Logging 
-        logfile_path = self.__priv_data_dir / 'logs'
-        formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(lineno)s: %(message)s')
-        self.__operation_logfile = logging.FileHandler(logfile_path / 'swiftkube_operation.log')
-        self.__operation_logfile.setFormatter(formatter)
-        self.__rtc_logfile = logging.FileHandler(logfile_path / 'swiftkube_rt.log')
-        self.__rtc_logfile.setFormatter(formatter)
-        self.__stc_logfile = logging.FileHandler(logfile_path / 'swiftkube_st.log')
-        self.__stc_logfile.setFormatter(formatter)
-        self.__cl_logfile = logging.FileHandler(logfile_path / 'swiftkube_control_loop.log')
-        self.__cl_logfile.setFormatter(formatter)
-        
         # Init replicas and kafka data 
         for service in self.__services:
             
@@ -185,9 +173,6 @@ class SwiftKubeScaler(Scaler):
                     self.__st_predictors[service] = dict()
                 if endpoint not in self.__st_predictors[service]:
                     __l = self.__logger.getChild(f'StreamEnbPI-{service}-{endpoint}')
-                    __enbpi_logfile = logging.FileHandler(logfile_path + f'/swiftkube_enbpi-{service}-{endpoint.replace("/", "_")}.log')
-                    __enbpi_logfile.setFormatter(formatter)
-                    __l.addHandler(__enbpi_logfile)
                     self.__st_predictors[service][endpoint] = \
                         EnbpiPredictor(
                             self.__cfg, __l, 
@@ -222,7 +207,7 @@ class SwiftKubeScaler(Scaler):
         self.__logger.info('GenesisRM preStart ...')
         self.__lt_logger = self.__logger.getChild('LongTermPred')
         
-        if self.__cfg.base.locust.workload == 'nasa':
+        if self.__cfg.locust.workload == 'nasa':
             data_path = self.__cfg.scaler.swiftkube_scaler.nasa_lt_result
             if os.path.exists(data_path): 
                 self.__lt_logger.info('already trained.')
@@ -231,7 +216,7 @@ class SwiftKubeScaler(Scaler):
             else:
                 raise Exception('lt_result_nasa.pkl not exists')
         
-        elif self.__cfg.base.locust.workload == 'fluctuating':
+        elif self.__cfg.locust.workload == 'fluctuating':
             data_path = self.__priv_data_dir / 'lt_result_eclog.pkl'
             if os.path.exists(data_path): 
                 self.__lt_logger.info('already trained.')
@@ -239,11 +224,11 @@ class SwiftKubeScaler(Scaler):
                     self.__lt_pred_result = pickle.load(data_file)
             else:
                 raise Exception('lt_result_eclog.pkl not exists')
+        return True 
 
     def start(self):
         self.__logger.info('GenesisRM start ...')
         __cl_logger = self.__logger.getChild('ControlLoop')
-        __cl_logger.addHandler(self.__cl_logfile)
         
         # Start kafka consumer 
         threading.Thread(target=self.kafka_consumer, daemon=True).start()
@@ -669,7 +654,6 @@ class SwiftKubeScaler(Scaler):
         __rt_start = time.time()
         
         __rt_logger = self.__logger.getChild('RTController')
-        __rt_logger.addHandler(self.__rtc_logfile)
         __rt_logger.debug('Running ...')
         
         def __get_concurrency(service_name) -> Tuple[str, int]:
@@ -718,7 +702,6 @@ class SwiftKubeScaler(Scaler):
     def st_controller(self) -> Dict[str, int]:
         retval = dict()
         __l = self.__logger.getChild('STController')
-        __l.addHandler(self.__stc_logfile)
         __l.info('Running ...')
         __start = time.time()
         
@@ -824,7 +807,6 @@ class SwiftKubeScaler(Scaler):
     
     def set_pod_state_to_rr(self, service_name: str, pod_dict: Dict):
         __logger = self.__logger.getChild('Operation')
-        __logger.addHandler(self.__operation_logfile)
         
         try:
             pod = self.patch_k8s_pod(
@@ -859,7 +841,6 @@ class SwiftKubeScaler(Scaler):
     
     def set_pod_state_to_rcn(self, service_name, pod: Dict):
         __l = self.__logger.getChild('Operation')
-        __l.addHandler(self.__operation_logfile)
         
         resources_config = copy.deepcopy(self.get_resources_config_from_cfg(service_name))
         for config in resources_config:
@@ -894,7 +875,6 @@ class SwiftKubeScaler(Scaler):
     
     def set_pod_state_to_rln(self, service_name, pod: Dict):
         __l = self.__logger.getChild('Operation')
-        __l.addHandler(self.__operation_logfile)
         
         resources_config = copy.deepcopy(self.get_resources_config_from_cfg(service_name))
         for config in resources_config:

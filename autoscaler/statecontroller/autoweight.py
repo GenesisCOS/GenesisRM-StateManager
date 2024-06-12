@@ -3,11 +3,16 @@ import math
 import os 
 import json 
 import threading 
+from concurrent import futures
+from concurrent.futures import as_completed
 from typing import List, Dict 
 from logging import Logger
+from gevent.pywsgi import WSGIServer
 
 from omegaconf import DictConfig
 from kubernetes.client.rest import ApiException
+from flask import Flask 
+from flask_restful import Resource, Api 
 import requests 
 
 from . import Scaler
@@ -35,9 +40,13 @@ INIT_LABELS = {
 
 ROOT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
+webapp = Flask('AutoWeightWebApp')
+webapi = Api(webapp)
+
 
 class AutoWeight(Scaler):
     def __init__(self, cfg: DictConfig, data_dir, logger: Logger):
+        super().__init__(cfg, logger)
         self.__cfg = cfg 
         self.__scaler_cfg = cfg.scaler.autoweight  
         self.__logger = logger
@@ -55,6 +64,15 @@ class AutoWeight(Scaler):
         for weight in self.__scaler_cfg.weights:
             self.__weights.append(weight)
         self.__max_weight = self.__scaler_cfg.max_weight
+        self.__webserver = None 
+        self.__webserver_thread = None 
+        
+    def get_status(self):
+        return dict(
+            workload=self.__workload,
+            run_mode='learn' if self.__learn else 'evaluate',
+            weights=self.__weights
+        ) 
         
     def locust_requests_on_modified(self, event):
         ts = time.time()
@@ -76,7 +94,22 @@ class AutoWeight(Scaler):
             self.__logger.info('注册 oberserver')
             self.__locust.register_observer_on_requests(
                 self.locust_requests_on_modified)
-    
+            
+        webapi.add_resource(
+            ResourceStatus, 
+            '/api/v1/status', 
+            endpoint='status', 
+            resource_class_kwargs=dict(
+                autoweight=self
+            ))
+        # 启动 webserver
+        self.__webserver = WSGIServer(('127.0.0.1', 8000), webapp)
+        self.__webserver_thread = threading.Thread(
+            target=self.__webserver.serve_forever,
+            name='webserver'
+        )
+        self.__webserver_thread.start()
+        
     def start(self):
         if self.__learn:
             self.explore_loop() 
@@ -94,7 +127,7 @@ class AutoWeight(Scaler):
             
     def set_pod_ipvs_weight(self, pod_dict: Dict, weight: int):
         try:
-            pod = self.patch_k8s_pod(
+            _ = self.patch_k8s_pod(
                 pod_dict["metadata"]["name"], pod_dict["metadata"]["namespace"],
                 body=dict(metadata=dict(labels={GENESIS_IO_IPVS_WEIGHT_LABEL: f"{weight}"}))
             ) 
@@ -105,12 +138,8 @@ class AutoWeight(Scaler):
                     f'namespace={pod_dict["metadata"]["namespace"]}) '
                     'not found'
                 )
-                
-        self.__logger.debug(
-            f'set pod (name={pod.metadata.name} '
-            f'namespace={pod.metadata.namespace}) '
-            f'ipvs-weight to {weight}.'
-        )
+            else:
+                self.__logger.error(str(e))
         
     def schedule_weight(self, pods: List[Dict], weights: List[int]):
         podname_to_weight = dict()
@@ -135,17 +164,33 @@ class AutoWeight(Scaler):
                 raise Exception(f'exponent must <= -1 or >= 1, {exponent} is not allowed')
         return self.schedule_weight(pods, weights)
             
-    def set_pods_ipvs_weight(self, service: str, weight_idx: int):
+    def set_pods_ipvs_weight(self, service: str, weight_index: int):
         deploy_name = self.get_k8s_dep_name_from_cfg(service_name=service)
         namespace = self.get_k8s_namespace_from_cfg()
         pods = self.list_k8s_pods_for_deployment(namespace=namespace, name=deploy_name)
         if pods is None:
             return 
-        podname_to_weight = self.calculate_weight_for_pods(pods, weight_idx)
-        for pod in pods:
-            podname = pod['metadata']['name']
-            self.set_pod_ipvs_weight(pod, podname_to_weight[podname])
+        podname_to_weight = self.calculate_weight_for_pods(pods, weight_index)
+        ret_futures = list()
+        with futures.ThreadPoolExecutor(max_workers=200) as executor:
+            for pod in pods:
+                podname = pod['metadata']['name']
+                executor.submit(self.set_pod_ipvs_weight, pod, podname_to_weight[podname])
+            for future in as_completed(ret_futures):
+                future.result()
             
-    def set_services_ipvs_weight(self, conf: Dict[str, int]):
-        for service, weight_idx in conf.items():
-            self.set_pod_ipvs_weight(service, weight_idx)  
+    def set_services_ipvs_weight(self, service_to_weight_index: Dict[str, int]):
+        ret_futures = list()
+        with futures.ThreadPoolExecutor(max_workers=200) as executor:
+            for service, weight_index in service_to_weight_index.items():
+                executor.submit(self.set_pod_ipvs_weight, service, weight_index)  
+            for future in as_completed(ret_futures):
+                future.result()
+
+
+class ResourceStatus(Resource):
+    def __init__(self, autoweight: AutoWeight):
+        self.__aw = autoweight 
+    
+    def get(self):
+        return self.__aw.get_status()

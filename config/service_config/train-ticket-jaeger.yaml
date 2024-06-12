@@ -1,0 +1,308 @@
+name: "Train-Ticket Jaeger"
+k8s:
+  namespace: train-ticket-jaeger
+
+locust:
+  host: http://10.10.30.15:9004
+  master_port: 5559
+  service_name: locust-jaeger
+  script: autoscaler/locust/train_ticket/locustfile.py
+  cluster_group: jaeger
+
+frontend_endpoints:
+  - 
+    service_name: travel-plan-service
+    endpoint_name: POST@/api/v1/travelplanservice/travelPlan/cheapest
+  # - 
+  #   service_name: food-service 
+  #   endpoint_name: GET@/api/v1/foodservice/foods/{*}/{*}/{*}/{*}
+
+configs:
+  - 
+    service_name: travel-plan-service 
+    k8s_dep_name: travel-plan-dep 
+    resources:
+      - name: travel-plan-service
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "980m"
+    worker:
+      target_utilization: 70
+      max: 20 
+    replicas:
+      max: 15 
+      min: 1 
+  - 
+    service_name: food-service 
+    k8s_dep_name: food-dep 
+    resources:
+      - name: food-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "710m"
+    worker:
+      target_utilization: 70
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: basic-service 
+    k8s_dep_name: basic-dep 
+    resources:
+      - name: basic-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "2200m"
+    worker:
+      target_utilization: 30
+      max: 20
+    replicas:
+      max: 20
+      min: 1 
+  - 
+    service_name: config-service 
+    k8s_dep_name: config-dep 
+    resources:
+      - name: config-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "710m"
+    worker:
+      target_utilization: 5
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: food-map-service 
+    k8s_dep_name: food-map-dep 
+    resources:
+      - name: food-map-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "510m"
+    worker:
+      target_utilization: 5
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: order-service 
+    k8s_dep_name: order-dep 
+    resources:
+      - name: order-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "850m"
+    worker:
+      target_utilization: 5
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: price-service 
+    k8s_dep_name: price-dep 
+    resources:
+      - name: price-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "200m"
+    worker:
+      target_utilization: 5
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: route-plan-service 
+    k8s_dep_name: route-plan-dep 
+    resources:
+      - name: route-plan-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "650m"
+    worker:
+      target_utilization: 70
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: route-service 
+    k8s_dep_name: route-dep 
+    resources:
+      - name: route-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "1900m"
+    worker:
+      target_utilization: 13
+      max: 20
+    replicas:
+      max: 20
+      min: 1 
+  - 
+    service_name: seat-service 
+    k8s_dep_name: seat-dep 
+    resources:
+      - name: seat-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "1900m"
+    worker:
+      target_utilization: 35
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: station-service 
+    k8s_dep_name: station-dep 
+    resources:
+      - name: station-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "2100m"
+    worker:
+      target_utilization: 19
+      max: 20
+    replicas:
+      max: 20
+      min: 1 
+  -
+    service_name: ticketinfo-service 
+    k8s_dep_name: ticketinfo-dep 
+    resources:
+      - name: ticketinfo-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "2100m"
+    worker:
+      target_utilization: 40
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: train-service 
+    k8s_dep_name: train-dep 
+    resources:
+      - name: train-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "950m"
+    worker:
+      target_utilization: 7
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: travel-b-service 
+    k8s_dep_name: travel-b-dep 
+    resources:
+      - name: travel-b-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "2100m"
+    worker:
+      target_utilization: 18
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: travel-service 
+    k8s_dep_name: travel-dep 
+    resources:
+      - name: travel-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "2000m"
+    worker:
+      target_utilization: 50
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 
+  -
+    service_name: travel2-service 
+    k8s_dep_name: travel2-dep 
+    resources:
+      - name: travel2-service 
+        resources:
+          limits:
+            memory: "3000Mi"
+            cpu: "3000m"
+          requests:
+            memory: "2048Mi"
+            cpu: "830m"
+    worker:
+      target_utilization: 12
+      max: 20
+    replicas:
+      max: 15 
+      min: 1 

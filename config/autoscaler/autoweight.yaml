@@ -1,0 +1,4 @@
+locust_enabled: false 
+learn: true 
+weights: [1, 2, 3, 4, 6, 9, 20, 40, 100]
+max_weight: 100

@@ -1,0 +1,6 @@
+min_cpu_limit: "10m"
+strategy: "S-L1"
+nasa_lt_result: 'autoscaler/data/swiftkube_data/lt_result_nasa.pkl'
+kafka:
+  topic: flink-span-stats
+  bootstrap_servers: "10.10.30.3:9092,10.10.30.98:9092"

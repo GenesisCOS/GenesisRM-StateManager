@@ -35,6 +35,9 @@ setup_logging("INFO", None)
 DATA_DIR = os.getenv('DATA_DIR')
 
 LOCUST_INDEX = int(os.getenv('LOCUST_INDEX'))
+TIMEOUT = os.getenv('TIMEOUT')
+if TIMEOUT is not None:
+    TIMEOUT = int(TIMEOUT)
 
 request_log_file = None 
     
@@ -58,12 +61,6 @@ else:
 def possible(x):
     """ x = 0 ~ 1 """
     return True if random.random() < x else False
-
-
-WAIT_TIME = 10
-PLUS = 25
-ADD = 5
-OFFSET = 210
 
 """ Init opentelemetry """
 
@@ -96,7 +93,7 @@ STATS_LOCK = threading.Lock()
 
 CLIENT_ID = None 
 
-REQUEST_TIMEOUT = (0.1, 3)
+REQUEST_TIMEOUT = (60, 120)
 
 class QuickStartUser(HttpUser):
     wait_time = between(WAIT_MIN, WAIT_MAX)
@@ -414,14 +411,10 @@ class QuickStartUser(HttpUser):
             )
         try:
             resp_json_dict = resp.json()
+            if resp_json_dict["status"] == 1:
+                return resp_json_dict["data"]
         except:
-            resp_json_dict = None 
-        if resp_json_dict is None:
             return None 
-        if resp_json_dict["status"] == 1:
-            return resp_json_dict["data"]
-        else:
-            return None
 
     def query_orders(self, login_id,
                      enable_travel_date_query: bool,
@@ -662,13 +655,13 @@ class QuickStartUser(HttpUser):
                 date
             )
             
-            if ticket is not None:
-                _ = self.query_train_foods(
-                    date,
-                    ticket[0]["fromStationName"],
-                    ticket[0]["toStationName"],
-                    ticket[0]["tripId"]
-                )
+            # if ticket is not None:
+            #     _ = self.query_train_foods(
+            #         date,
+            #         ticket[0]["fromStationName"],
+            #         ticket[0]["toStationName"],
+            #         ticket[0]["tripId"]
+            #     )
 
         # assurances_types = self.query_assurance_types()
         # contacts = self.query_contacts()
@@ -682,6 +675,9 @@ class CustomShape(LoadTestShape):
 
     def tick(self):
         run_time = self.get_run_time()
+        if TIMEOUT is not None:
+            if run_time > TIMEOUT:
+                return None 
         if run_time < self.time_limit:
             user_count = RPS[int(run_time)]
             return (user_count, self.spawn_rate)
