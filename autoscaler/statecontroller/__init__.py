@@ -158,7 +158,7 @@ class PrometheusUtil(object):
         
     def get_cpu_requested_from_prom(self, dep_name: str, namespace: str, state: str,
                                     start: int, end: int) -> Dict | None:
-        job = f'sum(swiftmonitor_pod_total_cpu_request{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\", state=\"{state}\"}}) / 1000'
+        job = f'sum(swiftmonitor_pod_total_cpu_request{{namespace=\"{namespace}\", podname=~\"{dep_name}-.*\", state=~\"{state}\"}}) / 1000'
         return self.__get_result(job, start, end, '1s')
         
     def get_cpu_usage_from_prom(self, dep_name: str, namespace: str,
@@ -390,6 +390,26 @@ class ServiceGraphUtil(object):
                 endpoint_name=self.get_endpoint_from_neo4j_node(node)
             ))
         return res
+
+
+class AppManager(object):
+    def __init__(self, host: str):
+        self.__host = host 
+        
+    def list_pods_for_deployment(self, name: str, namespace: str) -> List[Dict]:
+        resp = requests.get(f'http://{self.__host}/api/v1/deployments/pods/{namespace}/{name}')
+        pods = json.loads(resp.text)['pods']
+        return pods 
+
+    def list_nodes_by_role(self, role: str) -> List[Dict]:
+        resp = requests.get(f'http://{self.__host}/api/v1/nodes/list-by-role/{role}')
+        nodes = json.loads(resp.text)['nodes']
+        return nodes 
+    
+    def find_node(self, name: str) -> Dict:
+        resp = requests.get(f'http://{self.__host}/api/v1/nodes/node/{name}')
+        node = json.loads(resp.text)['node']
+        return node 
 
 
 class Scaler(ServiceConfig, DBUtil, ServiceGraphUtil, PrometheusUtil):

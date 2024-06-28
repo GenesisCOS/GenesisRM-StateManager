@@ -12,7 +12,8 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor
+    BatchSpanProcessor,
+    ConsoleSpanExporter
 )
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from requests import utils as requests_utils
@@ -70,11 +71,15 @@ resource = Resource(attributes={
     "cluster.group": CLUSTER_GROUP,
 })
 
+EXPORT_TO_OTEL = False 
 provider = TracerProvider(resource=resource)
-processor = BatchSpanProcessor(OTLPSpanExporter(
-    endpoint="http://127.0.0.1:4317", 
-    insecure=True
-))
+if EXPORT_TO_OTEL:
+    processor = BatchSpanProcessor(OTLPSpanExporter(
+        endpoint="http://127.0.0.1:4317", 
+        insecure=True
+    ))
+else:
+    processor = BatchSpanProcessor(ConsoleSpanExporter())
 provider.add_span_processor(processor)
 
 # Sets the global default tracer provider
@@ -87,7 +92,18 @@ tracer = trace.get_tracer("my.tracer.name")
 
 REAL_START_TIME = None 
 RESPONSE_TIMES = list()
-REPORT_INTERVAL = 60 
+
+REPORT_INTERVAL = os.getenv('REPORT_INTERVAL')
+if REPORT_INTERVAL is None:
+    REPORT_INTERVAL = 60 
+else:
+    REPORT_INTERVAL = int(REPORT_INTERVAL)
+
+REPORT_OFFSET = os.getenv('REPORT_OFFSET')
+if REPORT_OFFSET is None:
+    REPORT_OFFSET = 20
+else:
+    REPORT_OFFSET = int(REPORT_OFFSET)
 
 STATS_LOCK = threading.Lock()
 
@@ -178,11 +194,12 @@ class QuickStartUser(HttpUser):
                             )
                             request_csv.flush()
                         
-                        REAL_START_TIME = time.time() + 20
+                        REAL_START_TIME = time.time() + REPORT_OFFSET
                         with open(f'{DATA_DIR}/real_start_time.txt', 'w+') as real_start_time_file:
                             real_start_time_file.write(f'{REAL_START_TIME}')
                             real_start_time_file.flush()
-                        time.sleep(20)
+                        if REPORT_OFFSET > 0:
+                            time.sleep(REPORT_OFFSET)
                         
                         os.remove(f'{DATA_DIR}/request.log')
                         
@@ -680,6 +697,7 @@ class CustomShape(LoadTestShape):
                 return None 
         if run_time < self.time_limit:
             user_count = RPS[int(run_time)]
+            print(f"Locust user_count = {user_count}")
             return (user_count, self.spawn_rate)
         return None
 

@@ -46,6 +46,11 @@ def with_locust(output_dir,
     env['SERVICE_NAME'] = str(service_name)
     env['CLUSTER_GROUP'] = str(cfg.service_config.locust.cluster_group)
     env['DATA_DIR'] = str(output_dir)
+    if 'locust' in cfg.autoscaler:
+        if 'report_interval' in cfg.autoscaler.locust:
+            env['REPORT_INTERVAL'] = str(cfg.autoscaler.locust.report_interval)
+        if 'report_offset' in cfg.autoscaler.locust:
+            env['REPORT_OFFSET'] = str(cfg.autoscaler.locust.report_offset)
 
     # Run locust workers 
     args = [
@@ -170,8 +175,13 @@ class Locust(FileSystemEventHandler):
     def read_stats_file(self) -> pd.DataFrame:
         return pd.read_csv(pathlib.Path(self.__stats_file)) 
     
-    def read_requests(self) -> pd.DataFrame:
-        return pd.read_csv(pathlib.Path(self.__requests_file))
+    def read_requests(self) -> pd.DataFrame | None:
+        request = None 
+        try:
+            request = pd.read_csv(pathlib.Path(self.__requests_file))
+        except:
+            self.__logger.error(f'read {self.__requests_file} failed')
+        return request 
     
     def register_observer_on_requests(self, callback):
         if not self.__started:

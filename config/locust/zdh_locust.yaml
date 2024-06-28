@@ -1,6 +1,6 @@
 workload_dir: autoscaler/data/datasets/workload
-workload: test_hpa
-workers: 40
+workload: nasa_1day_60min_200_1500
+workers: 30
 output_dir: autoscaler/locust/output
-use_timeout: false 
+use_timeout: true 
 timeout_sec: 9000  # 2.5 hour

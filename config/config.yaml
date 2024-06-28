@@ -1,8 +1,8 @@
 defaults:
-  - service_config: train-ticket-schutzstaffel 
-  - autoscaler: none
+  - service_config: train-ticket-jaeger
+  - autoscaler: autothreshold
   - ts_predictor: default 
-  - locust: test_hpa 
+  - locust: test_hpa2
   - _self_
 
 base:

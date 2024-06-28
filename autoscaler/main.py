@@ -26,8 +26,14 @@ def main(cfg: DictConfig) -> None:
     logger = logging.getLogger('Main')
     logger.info(banner)
     logger.info(f'services = {cfg.service_config.name}')
+    logger.info(f'workload = {cfg.locust.workload}')
     
     scaler = None 
+    
+    locust = Locust(
+        cfg, f'csv-output-{int(time.time())}', 
+        cfg.locust.workload, logger.getChild('Locust')
+    )
     
     if cfg.autoscaler.name != 'none':
         # Run scaler 
@@ -51,7 +57,7 @@ def main(cfg: DictConfig) -> None:
         elif cfg.autoscaler.name == 'autothreshold':
             from .statecontroller.autothreshold import AutoThreshold
             scaler = AutoThreshold(cfg, pathlib.Path('autoscaler/data/autothreshold_data'), 
-                              logger.getChild('AutoThreshold'))
+                              logger.getChild('AutoThreshold'), locust)
             
         elif cfg.autoscaler.name == 'autoweight':
             from .statecontroller.autoweight import AutoWeight
@@ -66,11 +72,6 @@ def main(cfg: DictConfig) -> None:
         ok = scaler.pre_start()
         if not ok:
             raise Exception('scaler预启动失败')
-    
-    locust = Locust(
-        cfg, f'csv-output-{int(time.time())}', 
-        cfg.locust.workload, logger.getChild('Locust')
-    )
     
     locust_run = False 
     if 'locust_enabled' not in cfg.autoscaler or \

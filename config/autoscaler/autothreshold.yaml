@@ -2,6 +2,11 @@ name: "autothreshold"
 # 在 learn 为 true 的时候不要开启全局 locust
 # cb_scaler 在学习时会自动启动 locust
 locust_enabled: false 
+locust:
+  #report_interval: 2
+  #report_offset: 0
+  report_interval: 60
+  report_offset: 20
 learn: true 
 learning_rate: 0.01
 nn_layers: 3
@@ -16,6 +21,7 @@ groups:
       - train-service 
       - ticketinfo-service 
     thresholds: [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thresholds2: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
   - services:
       - basic-service 
       - order-service 
@@ -26,3 +32,4 @@ groups:
       - travel2-service 
       - travel-b-service 
     thresholds: [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+    thresholds2: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
